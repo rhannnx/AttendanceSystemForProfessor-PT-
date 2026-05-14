@@ -1,0 +1,97 @@
+{% extends 'record_tracker/base.html' %}
+{% load static %}
+
+{% block title %}Professors{% endblock %}
+{% block header_title %}Professors{% endblock %}
+{% block header_subtitle %}Manage part-time professor records{% endblock %}
+
+{% block extra_css %}
+.stats-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:16px; margin-bottom:24px; }
+.prof-table { width:100%; border-collapse:collapse; }
+.prof-table th { font-size:11px; font-weight:600; color:var(--gray-400); text-transform:uppercase; letter-spacing:.5px; padding:12px 16px; text-align:left; border-bottom:1px solid var(--blue-50); }
+.prof-table td { padding:14px 16px; border-bottom:1px solid var(--blue-50); font-size:13px; }
+.prof-table tr:last-child td { border-bottom:none; }
+.prof-table tr:hover td { background:var(--blue-50); }
+.prof-info { display:flex; align-items:center; gap:12px; }
+.prof-avatar { width:36px; height:36px; border-radius:50%; background:var(--blue-50); color:var(--blue-600); display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:600; flex-shrink:0; }
+.prof-name { font-size:13px; font-weight:500; }
+.prof-id { font-size:11px; color:var(--gray-400); }
+.dept-badge { display:inline-flex; align-items:center; padding:4px 10px; border-radius:20px; font-size:11px; font-weight:500; background:var(--blue-50); color:var(--blue-600); }
+.time-badge { display:inline-flex; align-items:center; gap:4px; padding:3px 8px; border-radius:6px; font-size:11px; font-weight:500; background:var(--teal-50); color:var(--teal-600); font-family:'DM Mono',monospace; }
+.action-btns { display:flex; gap:6px; }
+.icon-btn-sm { width:30px; height:30px; border-radius:6px; display:flex; align-items:center; justify-content:center; font-size:15px; border:none; transition:all .15s; text-decoration:none; cursor:pointer; }
+.icon-btn-sm.edit { background:var(--blue-50); color:var(--blue-600); }
+.icon-btn-sm.edit:hover { background:var(--blue-100); }
+.icon-btn-sm.delete { background:var(--red-50); color:var(--red-600); }
+.icon-btn-sm.delete:hover { background:#fcd9d9; }
+{% endblock %}
+
+{% block header_actions %}
+<div class="search-box">
+  <i class="ti ti-search"></i>
+  <input type="text" id="searchInput" placeholder="Search professor..." onkeyup="searchTable()" />
+</div>
+<button class="btn btn-primary" onclick="document.getElementById('addModal').classList.add('show')">
+  <i class="ti ti-plus"></i> Add Professor
+</button>
+{% endblock %}
+
+{% block content %}
+<div class="stats-grid">
+  <div class="stat-card blue"><div class="stat-icon blue"><i class="ti ti-users"></i></div><div class="stat-value">{{ total_professors }}</div><div class="stat-label">Total Professors</div></div>
+  <div class="stat-card teal"><div class="stat-icon teal"><i class="ti ti-building"></i></div><div class="stat-value">{{ total_departments }}</div><div class="stat-label">Departments</div></div>
+  <div class="stat-card amber"><div class="stat-icon amber"><i class="ti ti-calendar-check"></i></div><div class="stat-value">{{ present_today }}</div><div class="stat-label">Present Today</div></div>
+</div>
+<div class="card">
+  <div class="card-header">
+    <div><div class="card-title">All Professors</div><div class="card-subtitle">{{ total_professors }} registered professor{{ total_professors|pluralize }}</div></div>
+  </div>
+  <table class="prof-table">
+    <thead><tr><th>Professor</th><th>Employee ID</th><th>Department</th><th>Phone</th><th>Expected Time In</th><th>Actions</th></tr></thead>
+    <tbody id="professorTable">
+      {% for professor in professors %}
+      <tr>
+        <td><div class="prof-info"><div class="prof-avatar">{{ professor.user.first_name|slice:":1" }}{{ professor.user.last_name|slice:":1" }}</div><div><div class="prof-name">{{ professor.user.get_full_name }}</div><div class="prof-id">{{ professor.user.email|default:"No email" }}</div></div></div></td>
+        <td><span style="font-family:'DM Mono',monospace;font-size:12px;background:var(--blue-50);padding:3px 8px;border-radius:6px;">{{ professor.employee_id }}</span></td>
+        <td><span class="dept-badge">{{ professor.department }}</span></td>
+        <td style="color:var(--gray-400);">{{ professor.phone_number }}</td>
+        <td>{% if professor.expected_time_in %}<span class="time-badge"><i class="ti ti-clock" style="font-size:11px;"></i>{{ professor.expected_time_in|time:"h:i A" }}</span>{% else %}<span style="font-size:12px;color:var(--gray-400);">—</span>{% endif %}</td>
+        <td><div class="action-btns"><a href="/admin/record_tracker/professor/{{ professor.id }}/change/" class="icon-btn-sm edit"><i class="ti ti-edit"></i></a><a href="/admin/record_tracker/professor/{{ professor.id }}/delete/" class="icon-btn-sm delete"><i class="ti ti-trash"></i></a></div></td>
+      </tr>
+      {% empty %}<tr><td colspan="6"><div class="empty-state"><i class="ti ti-users-off"></i>No professors registered yet.</div></td></tr>{% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<div class="modal-overlay" id="addModal">
+  <div class="modal" style="width:500px;">
+    <div class="modal-title"><i class="ti ti-user-plus" style="color:var(--blue-600);"></i>Add New Professor</div>
+    <form method="POST" action="{% url 'add_professor' %}">{% csrf_token %}
+      <div class="section-divider">Account Information</div>
+      <div class="form-grid-2"><div class="form-group"><label class="form-label">First Name *</label><input type="text" name="first_name" class="form-input" placeholder="e.g. Maria" required /></div><div class="form-group"><label class="form-label">Last Name *</label><input type="text" name="last_name" class="form-input" placeholder="e.g. Santos" required /></div></div>
+      <div class="form-group"><label class="form-label">Email *</label><input type="email" name="email" class="form-input" placeholder="e.g. msantos@sbc.edu.ph" required /></div>
+      <div class="form-grid-2"><div class="form-group"><label class="form-label">Username *</label><input type="text" name="username" class="form-input" required /></div><div class="form-group"><label class="form-label">Password *</label><input type="password" name="password" class="form-input" required /></div></div>
+      <div class="section-divider">Professor Details</div>
+      <div class="form-grid-2"><div class="form-group"><label class="form-label">Employee ID *</label><input type="text" name="employee_id" class="form-input" placeholder="e.g. EMP002" required /></div><div class="form-group"><label class="form-label">Phone Number *</label><input type="text" name="phone_number" class="form-input" placeholder="e.g. 09XXXXXXXXX" required /></div></div>
+      <div class="form-group"><label class="form-label">Department *</label><input type="text" name="department" class="form-input" placeholder="e.g. IT Department" required /></div>
+      <div class="form-group"><label class="form-label">Expected Time In</label><input type="time" name="expected_time_in" class="form-input" /><span class="form-hint">Used to detect tardiness. Leave blank if no fixed schedule.</span></div>
+      <div class="modal-actions"><button type="button" class="btn btn-outline" onclick="document.getElementById('addModal').classList.remove('show')">Cancel</button><button type="submit" class="btn btn-primary"><i class="ti ti-check"></i> Save Professor</button></div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function searchTable() {
+  const q = document.getElementById('searchInput').value.toLowerCase();
+  document.querySelectorAll('#professorTable tr').forEach(row => {
+    const name = row.querySelector('.prof-name');
+    const dept = row.querySelector('.dept-badge');
+    const id = row.querySelector('td:nth-child(2)');
+    if (name) row.style.display = (name.textContent.toLowerCase().includes(q)||(dept&&dept.textContent.toLowerCase().includes(q))||(id&&id.textContent.toLowerCase().includes(q))) ? '':'none';
+  });
+}
+document.getElementById('addModal').addEventListener('click', e => { if(e.target===e.currentTarget) e.currentTarget.classList.remove('show'); });
+</script>
+{% endblock %}

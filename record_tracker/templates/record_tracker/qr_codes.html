@@ -1,0 +1,67 @@
+{% extends 'record_tracker/base.html' %}
+{% load static %}
+
+{% block title %}QR Codes{% endblock %}
+{% block header_title %}QR Codes{% endblock %}
+{% block header_subtitle %}Professor QR codes for time-in and time-out{% endblock %}
+
+{% block extra_css %}
+.qr-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:16px; }
+.qr-card { background:white; border-radius:12px; border:1px solid var(--blue-100); padding:20px; display:flex; flex-direction:column; align-items:center; gap:14px; transition:all .15s; }
+.qr-card:hover { border-color:var(--blue-400); box-shadow:0 4px 12px rgba(4,44,83,.1); }
+.qr-image { width:150px; height:150px; border-radius:8px; border:1px solid var(--blue-100); display:flex; align-items:center; justify-content:center; overflow:hidden; }
+.qr-image img { width:100%; height:100%; object-fit:contain; }
+.qr-name { font-size:13px; font-weight:600; text-align:center; }
+.qr-id { font-size:11px; color:var(--gray-400); font-family:'DM Mono',monospace; }
+.qr-dept { font-size:11px; background:var(--blue-50); color:var(--blue-600); padding:3px 8px; border-radius:20px; }
+.qr-actions { display:flex; gap:8px; width:100%; }
+.qr-actions .btn { flex:1; justify-content:center; font-size:12px; padding:7px 10px; }
+.info-banner { background:var(--blue-50); border:1px solid var(--blue-100); border-radius:10px; padding:14px 18px; margin-bottom:20px; display:flex; align-items:center; gap:12px; font-size:13px; color:var(--blue-600); }
+.info-banner i { font-size:20px; flex-shrink:0; }
+{% endblock %}
+
+{% block header_actions %}
+<a href="{% url 'generate_all_qr' %}" class="btn btn-primary">
+  <i class="ti ti-qrcode"></i> Generate All QR Codes
+</a>
+{% endblock %}
+
+{% block content %}
+<div class="info-banner">
+  <i class="ti ti-info-circle"></i>
+  Each professor has a unique QR code. Print and give them their QR code to scan for time-in and time-out. Must be connected to school WiFi.
+</div>
+
+{% if professors %}
+<div class="qr-grid">
+  {% for professor in professors %}
+  <div class="qr-card">
+    <div class="qr-image">
+      {% if professor.qr_code %}
+        <img src="{{ professor.qr_code.url }}" alt="QR for {{ professor.user.get_full_name }}" />
+      {% else %}
+        <div style="display:flex;flex-direction:column;align-items:center;gap:8px;color:var(--gray-400);">
+          <i class="ti ti-qrcode" style="font-size:40px;color:var(--blue-100);"></i>
+          <span style="font-size:11px;">Not generated</span>
+        </div>
+      {% endif %}
+    </div>
+    <div class="qr-name">{{ professor.user.get_full_name }}</div>
+    <div class="qr-id">{{ professor.employee_id }}</div>
+    <div class="qr-dept">{{ professor.department }}</div>
+    <div class="qr-actions">
+      <a href="{% url 'generate_qr' professor.id %}" class="btn btn-primary"><i class="ti ti-refresh"></i> Generate</a>
+      {% if professor.qr_code %}
+      <a href="{{ professor.qr_code.url }}" download class="btn btn-outline"><i class="ti ti-download"></i> Save</a>
+      {% endif %}
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% else %}
+<div class="empty-state" style="padding:60px;">
+  <i class="ti ti-users-off" style="font-size:40px;"></i>
+  <p>No professors registered yet. Add professors first to generate QR codes.</p>
+</div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,237 @@
+{% extends 'record_tracker/base.html' %}
+{% load static %}
+
+{% block title %}Dashboard{% endblock %}
+{% block header_title %}Dashboard{% endblock %}
+{% block header_subtitle %}Part-Time Professor Attendance Overview{% endblock %}
+
+{% block extra_head %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.0/chart.umd.min.js"></script>
+{% endblock %}
+
+{% block extra_css %}
+.main-grid { display: grid; grid-template-columns: 1fr 340px; gap: 20px; margin-bottom: 20px; }
+.stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 24px; }
+.bottom-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+.chart-wrap { position: relative; height: 200px; }
+.att-table { width: 100%; border-collapse: collapse; }
+.att-table th { font-size: 11px; font-weight: 600; color: var(--gray-400); text-transform: uppercase; letter-spacing: 0.5px; padding: 0 0 12px; text-align: left; border-bottom: 1px solid var(--blue-50); }
+.att-table td { padding: 12px 0; border-bottom: 1px solid var(--blue-50); font-size: 13px; }
+.att-table tr:last-child td { border-bottom: none; }
+.prof-info { display: flex; align-items: center; gap: 10px; }
+.prof-avatar { width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; }
+.prof-name { font-size: 13px; font-weight: 500; }
+.prof-dept { font-size: 11px; color: var(--gray-400); }
+.av-blue { background: var(--blue-50); color: var(--blue-600); }
+.schedule-list { list-style: none; }
+.schedule-item { display: flex; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--blue-50); }
+.schedule-item:last-child { border-bottom: none; }
+.schedule-time { font-size: 11px; color: var(--gray-400); white-space: nowrap; min-width: 70px; padding-top: 2px; font-family: 'DM Mono', monospace; }
+.schedule-dot-line { display: flex; flex-direction: column; align-items: center; gap: 3px; padding-top: 4px; }
+.sdot { width: 8px; height: 8px; border-radius: 50%; border: 2px solid var(--blue-400); background: white; flex-shrink: 0; }
+.sline { width: 1px; flex: 1; background: var(--blue-100); min-height: 20px; }
+.schedule-name { font-size: 13px; font-weight: 500; }
+.schedule-meta { font-size: 11px; color: var(--gray-400); margin-top: 2px; }
+.quick-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.action-btn { background: var(--blue-50); border: 1px solid var(--blue-100); border-radius: 10px; padding: 14px; cursor: pointer; display: flex; flex-direction: column; gap: 6px; transition: all 0.15s; text-decoration: none; }
+.action-btn:hover { background: var(--blue-100); border-color: var(--blue-200); }
+.action-btn i { font-size: 22px; color: var(--blue-600); }
+.action-btn span { font-size: 12px; font-weight: 500; color: var(--blue-800); }
+{% endblock %}
+
+{% block header_actions %}
+<div class="date-badge"><i class="ti ti-calendar"></i>{{ today }}</div>
+<div class="search-box">
+  <i class="ti ti-search"></i>
+  <input type="text" id="searchInput" placeholder="Search professor..." onkeyup="searchTable()" />
+</div>
+<a href="{% url 'notifications' %}" class="icon-btn notif-dot"><i class="ti ti-bell"></i></a>
+{% endblock %}
+
+{% block content %}
+<div class="stats-grid">
+  <div class="stat-card blue">
+    <div class="stat-icon blue"><i class="ti ti-users"></i></div>
+    <div class="stat-value">{{ total_professors }}</div>
+    <div class="stat-label">Total Professors</div>
+    <div class="stat-change up"><i class="ti ti-trending-up"></i> Registered</div>
+  </div>
+  <div class="stat-card teal">
+    <div class="stat-icon teal"><i class="ti ti-login"></i></div>
+    <div class="stat-value">{{ timed_in_today }}</div>
+    <div class="stat-label">Timed In Today</div>
+    <div class="stat-change up"><i class="ti ti-trending-up"></i> As of today</div>
+  </div>
+  <div class="stat-card amber">
+    <div class="stat-icon amber"><i class="ti ti-clock"></i></div>
+    <div class="stat-value">{{ active_sessions }}</div>
+    <div class="stat-label">Active Sessions</div>
+    <div class="stat-change up"><i class="ti ti-trending-up"></i> Ongoing classes</div>
+  </div>
+  <div class="stat-card red">
+    <div class="stat-icon red"><i class="ti ti-logout"></i></div>
+    <div class="stat-value">{{ timed_out_today }}</div>
+    <div class="stat-label">Timed Out</div>
+    <div class="stat-change down"><i class="ti ti-trending-down"></i> Left campus</div>
+  </div>
+</div>
+
+<div class="main-grid">
+  <div class="card">
+    <div class="card-header">
+      <div>
+        <div class="card-title">Today's Attendance</div>
+        <div class="card-subtitle">Real-time professor attendance log</div>
+      </div>
+      <a href="{% url 'generate_pdf_range' %}?type=daily&date_from={{ today }}&date_to={{ today }}" class="btn btn-outline">
+        <i class="ti ti-download"></i> Export PDF
+      </a>
+    </div>
+    <div class="card-body" style="padding: 0 20px;">
+      <table class="att-table">
+        <thead>
+          <tr><th>Professor</th><th>Time In</th><th>Time Out</th><th>Status</th><th>Sessions</th></tr>
+        </thead>
+        <tbody>
+          {% for record in recent_attendance %}
+          <tr>
+            <td>
+              <div class="prof-info">
+                <div class="prof-avatar av-blue">{{ record.professor.user.first_name|slice:":1" }}{{ record.professor.user.last_name|slice:":1" }}</div>
+                <div>
+                  <div class="prof-name">{{ record.professor.user.get_full_name }}</div>
+                  <div class="prof-dept">{{ record.professor.department }}</div>
+                </div>
+              </div>
+            </td>
+            <td>{{ record.time_in|time:"h:i A" }}</td>
+            <td>{% if record.time_out %}{{ record.time_out|time:"h:i A" }}{% else %}—{% endif %}</td>
+            <td>
+              {% if record.is_timed_out %}
+                <span class="status-badge out"><span class="status-dot"></span>Timed Out</span>
+              {% elif record.sessions.exists %}
+                <span class="status-badge session" style="background:var(--amber-50);color:var(--amber-600);"><span class="status-dot"></span>In Session</span>
+              {% else %}
+                <span class="status-badge in"><span class="status-dot"></span>Timed In</span>
+              {% endif %}
+            </td>
+            <td>{{ record.sessions.count }}</td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="5"><div class="empty-state"><i class="ti ti-calendar-off" style="font-size:24px;display:block;margin-bottom:8px;"></i>No attendance records for today yet.</div></td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div style="display:flex;flex-direction:column;gap:20px;">
+    <div class="card">
+      <div class="card-header"><div><div class="card-title">Today's Sessions</div><div class="card-subtitle">Active and completed</div></div></div>
+      <div class="card-body" style="padding: 0 20px;">
+        <ul class="schedule-list">
+          {% for session in recent_sessions %}
+          <li class="schedule-item">
+            <div class="schedule-time">{{ session.start_time|time:"h:i A" }}</div>
+            <div class="schedule-dot-line">
+              {% if session.end_time %}<div class="sdot" style="border-color:var(--teal-400);background:var(--teal-400);"></div>
+              {% else %}<div class="sdot"></div>{% endif %}
+              <div class="sline"></div>
+            </div>
+            <div class="schedule-content">
+              <div class="schedule-name">{{ session.subject_code }}</div>
+              <div class="schedule-meta">{{ session.classroom }} · {{ session.day_record.professor.user.last_name }}</div>
+            </div>
+          </li>
+          {% empty %}
+          <li style="padding:20px 0;text-align:center;color:var(--gray-400);font-size:13px;">No sessions logged today.</li>
+          {% endfor %}
+        </ul>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-header"><div class="card-title">Quick Actions</div></div>
+      <div class="card-body">
+        <div class="quick-actions">
+          <a href="{% url 'attendance' %}" class="action-btn"><i class="ti ti-login"></i><span>Record Time In</span></a>
+          <a href="{% url 'attendance' %}" class="action-btn"><i class="ti ti-logout"></i><span>Record Time Out</span></a>
+          <a href="{% url 'sessions' %}" class="action-btn"><i class="ti ti-clock-plus"></i><span>Log Session</span></a>
+          <a href="{% url 'generate_pdf_range' %}?type=daily&date_from={{ today }}&date_to={{ today }}" class="action-btn"><i class="ti ti-file-download"></i><span>Today's Report</span></a>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="bottom-grid">
+  <div class="card">
+    <div class="card-header"><div><div class="card-title">Weekly Attendance</div><div class="card-subtitle">This week's time-in overview</div></div></div>
+    <div class="card-body"><div class="chart-wrap"><canvas id="weeklyChart"></canvas></div></div>
+  </div>
+  <div class="card">
+    <div class="card-header"><div><div class="card-title">Department Summary</div><div class="card-subtitle">Attendance by department today</div></div></div>
+    <div class="card-body">
+      <div style="display:flex;flex-direction:column;gap:14px;">
+        {% for dept in department_stats %}
+        <div>
+          <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:6px;">
+            <span style="font-weight:500;">{{ dept.department }}</span>
+            <span style="color:var(--gray-400);">{{ dept.present }}/{{ dept.total }} present</span>
+          </div>
+          <div style="background:var(--blue-50);border-radius:20px;height:6px;">
+            <div style="background:var(--blue-400);height:6px;border-radius:20px;width:{{ dept.percentage }}%;"></div>
+          </div>
+        </div>
+        {% empty %}<p style="font-size:13px;color:var(--gray-400);text-align:center;">No department data.</p>
+        {% endfor %}
+      </div>
+      <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--blue-50);">
+        <div style="font-size:12px;font-weight:600;margin-bottom:10px;">Recent SMS Alerts</div>
+        {% for record in recent_attendance|slice:":3" %}
+        <div style="display:flex;gap:8px;align-items:flex-start;margin-bottom:8px;">
+          <div style="width:6px;height:6px;border-radius:50%;background:var(--teal-400);margin-top:5px;flex-shrink:0;"></div>
+          <div>
+            <div style="font-size:12px;">{{ record.professor.user.get_full_name }} timed in</div>
+            <div style="font-size:11px;color:var(--gray-400);">{{ record.time_in|time:"h:i A" }} · Sent via Movider</div>
+          </div>
+        </div>
+        {% empty %}<p style="font-size:12px;color:var(--gray-400);">No SMS alerts today.</p>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+new Chart(document.getElementById('weeklyChart').getContext('2d'), {
+  type: 'bar',
+  data: {
+    labels: ['Mon','Tue','Wed','Thu','Fri'],
+    datasets: [
+      { label:'Timed In',  data:{{ weekly_timein|safe }},  backgroundColor:'#378ADD', borderRadius:6, barThickness:20 },
+      { label:'Timed Out', data:{{ weekly_timeout|safe }}, backgroundColor:'#B5D4F4', borderRadius:6, barThickness:20 }
+    ]
+  },
+  options: {
+    responsive:true, maintainAspectRatio:false,
+    plugins: { legend: { position:'top', labels:{ font:{family:'DM Sans',size:12}, boxWidth:12, boxHeight:12, usePointStyle:true, pointStyle:'rectRounded' } } },
+    scales: {
+      x: { grid:{display:false}, ticks:{font:{family:'DM Sans',size:12},color:'#888780'} },
+      y: { grid:{color:'#E6F1FB'}, ticks:{font:{family:'DM Sans',size:12},color:'#888780',stepSize:2}, max:14 }
+    }
+  }
+});
+
+function searchTable() {
+  const q = document.getElementById('searchInput').value.toLowerCase();
+  document.querySelectorAll('.att-table tbody tr').forEach(row => {
+    const name = row.querySelector('.prof-name');
+    const dept = row.querySelector('.prof-dept');
+    if (name) row.style.display = (name.textContent.toLowerCase().includes(q) || (dept && dept.textContent.toLowerCase().includes(q))) ? '' : 'none';
+  });
+}
+</script>
+{% endblock %}

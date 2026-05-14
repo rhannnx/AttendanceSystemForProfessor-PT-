@@ -1,0 +1,106 @@
+{% extends 'record_tracker/base.html' %}
+{% load static %}
+
+{% block title %}PDF Reports{% endblock %}
+{% block header_title %}PDF Reports{% endblock %}
+{% block header_subtitle %}Generate and download attendance reports{% endblock %}
+
+{% block extra_css %}
+.export-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:16px; margin-bottom:20px; }
+.export-card { background:white; border-radius:12px; border:1px solid var(--blue-100); padding:20px; display:flex; flex-direction:column; gap:14px; transition:all .18s; position:relative; overflow:hidden; }
+.export-card::before { content:''; position:absolute; top:0; left:0; right:0; height:3px; }
+.export-card.blue::before { background:var(--blue-400); }
+.export-card.teal::before { background:var(--teal-400); }
+.export-card.amber::before { background:var(--amber-400); }
+.export-card:hover { border-color:var(--blue-200); box-shadow:0 6px 20px rgba(4,44,83,.08); transform:translateY(-2px); }
+.export-icon { width:44px; height:44px; border-radius:11px; display:flex; align-items:center; justify-content:center; font-size:20px; }
+.export-icon.blue  { background:var(--blue-50);  color:var(--blue-600); }
+.export-icon.teal  { background:var(--teal-50);  color:var(--teal-600); }
+.export-icon.amber { background:var(--amber-50); color:var(--amber-600); }
+.export-label { font-family:'Sora',sans-serif; font-size:13.5px; font-weight:600; }
+.export-desc { font-size:12px; color:var(--gray-400); line-height:1.5; margin-top:2px; }
+.form-grid { display:grid; grid-template-columns:1fr 1fr 1fr auto; gap:12px; align-items:end; }
+.prof-table { width:100%; border-collapse:collapse; }
+.prof-table th { font-size:11px; font-weight:600; color:var(--gray-400); text-transform:uppercase; letter-spacing:.5px; padding:0 0 10px; text-align:left; border-bottom:1px solid var(--blue-50); }
+.prof-table td { padding:13px 0; border-bottom:1px solid var(--blue-50); font-size:13px; vertical-align:middle; }
+.prof-table tr:last-child td { border-bottom:none; }
+.prof-info { display:flex; align-items:center; gap:10px; }
+.prof-avatar { width:32px; height:32px; border-radius:50%; background:var(--blue-50); color:var(--blue-600); display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:600; flex-shrink:0; }
+.prof-name { font-size:13px; font-weight:500; }
+.prof-dept { font-size:11px; color:var(--gray-400); }
+.stat-pill { display:inline-flex; align-items:center; padding:3px 10px; border-radius:20px; font-size:11.5px; font-weight:500; }
+.stat-pill.blue { background:var(--blue-50); color:var(--blue-600); }
+.stat-pill.teal { background:var(--teal-50); color:var(--teal-600); }
+{% endblock %}
+
+{% block header_actions %}
+<a href="{% url 'generate_pdf_all' %}" class="btn btn-primary">
+  <i class="ti ti-download"></i> Export All Professors
+</a>
+{% endblock %}
+
+{% block content %}
+<!-- Quick exports -->
+<div class="export-grid">
+  <div class="export-card blue">
+    <div class="export-icon blue"><i class="ti ti-calendar-stats"></i></div>
+    <div><div class="export-label">Today's Report</div><div class="export-desc">All attendance for {{ today }}.</div></div>
+    <a href="{% url 'generate_pdf_range' %}?type=daily&date_from={{ today }}&date_to={{ today }}" class="btn btn-primary btn-sm"><i class="ti ti-download"></i> Download</a>
+  </div>
+  <div class="export-card teal">
+    <div class="export-icon teal"><i class="ti ti-calendar-week"></i></div>
+    <div><div class="export-label">This Week</div><div class="export-desc">{{ week_start }} to {{ today }}.</div></div>
+    <a href="{% url 'generate_pdf_range' %}?type=weekly&date_from={{ week_start }}&date_to={{ today }}" class="btn btn-teal btn-sm"><i class="ti ti-download"></i> Download</a>
+  </div>
+  <div class="export-card amber">
+    <div class="export-icon amber"><i class="ti ti-calendar-month"></i></div>
+    <div><div class="export-label">This Month</div><div class="export-desc">{{ today|date:"F Y" }} full report.</div></div>
+    <a href="{% url 'generate_pdf_range' %}?type=monthly&date_from={{ month_start }}&date_to={{ today }}" class="btn btn-outline btn-sm"><i class="ti ti-download"></i> Download</a>
+  </div>
+</div>
+
+<!-- Custom range -->
+<div class="card" style="margin-bottom:20px;">
+  <div class="card-header"><div><div class="card-title">Custom Report</div><div class="card-subtitle">Filter by date range and professor</div></div></div>
+  <div class="card-body">
+    <form method="GET" action="{% url 'generate_pdf_range' %}">
+      <input type="hidden" name="type" value="custom" />
+      <div class="form-grid">
+        <div class="form-group"><label class="form-label">From Date</label><input type="date" name="date_from" class="form-input" value="{{ today }}" /></div>
+        <div class="form-group"><label class="form-label">To Date</label><input type="date" name="date_to" class="form-input" value="{{ today }}" /></div>
+        <div class="form-group">
+          <label class="form-label">Professor (optional)</label>
+          <select name="professor_id" class="form-select">
+            <option value="">All Professors</option>
+            {% for prof in professors %}<option value="{{ prof.id }}">{{ prof.user.get_full_name }}</option>{% endfor %}
+          </select>
+        </div>
+        <button type="submit" class="btn btn-primary"><i class="ti ti-file-download"></i> Generate</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Per-professor -->
+<div class="card">
+  <div class="card-header"><div><div class="card-title">Export by Professor</div><div class="card-subtitle">Full attendance history per professor</div></div></div>
+  <div class="card-body" style="padding:0 20px;">
+    <table class="prof-table">
+      <thead><tr><th>Professor</th><th>Employee ID</th><th>Department</th><th>Total Records</th><th style="text-align:right;">Actions</th></tr></thead>
+      <tbody>
+        {% for prof in professors %}
+        <tr>
+          <td><div class="prof-info"><div class="prof-avatar">{{ prof.user.first_name|slice:":1" }}{{ prof.user.last_name|slice:":1" }}</div><div><div class="prof-name">{{ prof.user.get_full_name }}</div><div class="prof-dept">{{ prof.user.email }}</div></div></div></td>
+          <td><span class="stat-pill blue">{{ prof.employee_id }}</span></td>
+          <td>{{ prof.department }}</td>
+          <td><span class="stat-pill teal">{{ prof.attendance_days.count }} records</span></td>
+          <td style="text-align:right;"><a href="{% url 'generate_pdf' prof.id %}" class="btn btn-outline btn-sm"><i class="ti ti-download"></i> Full History</a></td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="5"><div class="empty-state"><i class="ti ti-users-off"></i>No professors registered yet.</div></td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}

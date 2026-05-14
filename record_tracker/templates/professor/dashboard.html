@@ -1,0 +1,180 @@
+{% extends 'professor/base.html' %}
+{% load static %}
+
+{% block title %}My Dashboard{% endblock %}
+{% block header_title %}My Dashboard{% endblock %}
+{% block header_subtitle %}Welcome back, {{ professor.user.first_name }}!{% endblock %}
+
+{% block extra_css %}
+.stats-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:16px; margin-bottom:24px; }
+.main-grid  { display:grid; grid-template-columns:1fr 300px; gap:20px; }
+
+/* Welcome banner */
+.welcome-banner { background:linear-gradient(135deg,var(--blue-900) 0%,var(--blue-600) 100%); border-radius:16px; padding:24px 28px; margin-bottom:24px; display:flex; align-items:center; justify-content:space-between; position:relative; overflow:hidden; }
+.welcome-banner::before { content:''; position:absolute; right:-40px; top:-40px; width:180px; height:180px; background:rgba(255,255,255,0.05); border-radius:50%; }
+.welcome-banner::after  { content:''; position:absolute; right:40px; bottom:-60px; width:120px; height:120px; background:rgba(255,255,255,0.05); border-radius:50%; }
+.welcome-text h2 { font-size:18px; font-weight:600; color:white; margin-bottom:4px; }
+.welcome-text p  { font-size:13px; color:rgba(255,255,255,0.7); }
+.welcome-status  { background:rgba(255,255,255,0.15); border-radius:12px; padding:14px 18px; text-align:center; position:relative; z-index:1; min-width:160px; }
+.welcome-status .status-label { font-size:11px; color:rgba(255,255,255,0.7); margin-bottom:4px; }
+.welcome-status .status-value { font-size:14px; font-weight:600; color:white; }
+
+/* Tables */
+.att-table { width:100%; border-collapse:collapse; }
+.att-table th { font-size:11px; font-weight:600; color:var(--gray-400); text-transform:uppercase; letter-spacing:.5px; padding:10px 16px; text-align:left; border-bottom:1px solid var(--blue-50); }
+.att-table td { padding:12px 16px; border-bottom:1px solid var(--blue-50); font-size:13px; }
+.att-table tr:last-child td { border-bottom:none; }
+.att-table tr:hover td { background:var(--blue-50); }
+
+/* Session list */
+.session-item { display:flex; align-items:center; gap:12px; padding:12px 20px; border-bottom:1px solid var(--blue-50); }
+.session-item:last-child { border-bottom:none; }
+.session-icon { width:34px; height:34px; border-radius:8px; background:var(--amber-50); color:var(--amber-600); display:flex; align-items:center; justify-content:center; font-size:16px; flex-shrink:0; }
+.session-subject { font-size:13px; font-weight:500; }
+.session-meta    { font-size:11px; color:var(--gray-400); margin-top:2px; }
+.session-time    { margin-left:auto; font-size:11px; color:var(--gray-400); font-family:'DM Mono',monospace; white-space:nowrap; }
+
+/* QR preview */
+.qr-preview { display:flex; flex-direction:column; align-items:center; padding:20px; }
+.qr-img-wrap { width:150px; height:150px; border:2px solid var(--blue-100); border-radius:12px; display:flex; align-items:center; justify-content:center; overflow:hidden; margin-bottom:12px; }
+.qr-img-wrap img { width:100%; height:100%; object-fit:contain; }
+{% endblock %}
+
+{% block header_actions %}
+<div class="date-badge"><i class="ti ti-calendar"></i>{{ today }}</div>
+{% endblock %}
+
+{% block content %}
+
+<!-- Welcome banner -->
+<div class="welcome-banner">
+  <div class="welcome-text" style="position:relative;z-index:1;">
+    <h2>Hello, {{ professor.user.first_name }}! 👋</h2>
+    <p>{{ professor.department }} · ID: {{ professor.employee_id }}</p>
+    {% if professor.expected_time_in %}
+    <p style="margin-top:6px;font-size:12px;color:rgba(255,255,255,0.6);">
+      <i class="ti ti-clock" style="font-size:12px;"></i>
+      Expected time in: {{ professor.expected_time_in|time:"h:i A" }}
+    </p>
+    {% endif %}
+  </div>
+  <div class="welcome-status" style="position:relative;z-index:1;">
+    <div class="status-label">Today's Status</div>
+    {% if today_record %}
+      {% if today_record.is_timed_out %}
+        <div class="status-value">🔵 Timed Out</div>
+        <div style="font-size:11px;color:rgba(255,255,255,0.6);margin-top:4px;">{{ today_record.time_out|time:"h:i A" }}</div>
+      {% else %}
+        <div class="status-value">🟢 On Campus</div>
+        <div style="font-size:11px;color:rgba(255,255,255,0.6);margin-top:4px;">Since {{ today_record.time_in|time:"h:i A" }}</div>
+      {% endif %}
+    {% else %}
+      <div class="status-value">⚪ Not Yet In</div>
+      <div style="font-size:11px;color:rgba(255,255,255,0.6);margin-top:4px;">Scan QR to time in</div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Stats -->
+<div class="stats-grid">
+  <div class="stat-card blue"><div class="stat-icon blue"><i class="ti ti-calendar-check"></i></div><div class="stat-value">{{ total_days }}</div><div class="stat-label">Days Present</div></div>
+  <div class="stat-card teal"><div class="stat-icon teal"><i class="ti ti-clock"></i></div><div class="stat-value">{{ total_sessions }}</div><div class="stat-label">Sessions Logged</div></div>
+  <div class="stat-card amber"><div class="stat-icon amber"><i class="ti ti-calendar-month"></i></div><div class="stat-value">{{ month_days }}</div><div class="stat-label">This Month</div></div>
+  <div class="stat-card red"><div class="stat-icon red"><i class="ti ti-clock-exclamation"></i></div><div class="stat-value">{{ late_count }}</div><div class="stat-label">Late This Month</div></div>
+</div>
+
+<div class="main-grid">
+
+  <!-- LEFT -->
+  <div>
+    <!-- Recent Attendance -->
+    <div class="card" style="margin-bottom:20px;">
+      <div class="card-header">
+        <div><div class="card-title">Recent Attendance</div><div class="card-subtitle">Your last 7 records</div></div>
+        <a href="{% url 'professor_attendance' %}" class="card-link">View all →</a>
+      </div>
+      <table class="att-table">
+        <thead><tr><th>Date</th><th>Time In</th><th>Time Out</th><th>Duration</th><th>Status</th></tr></thead>
+        <tbody>
+          {% for item in recent_attendance %}
+          <tr>
+            <td style="font-family:'DM Mono',monospace;font-size:12px;font-weight:500;">{{ item.record.date }}</td>
+            <td style="font-family:'DM Mono',monospace;font-size:12px;">{{ item.record.time_in|time:"h:i A" }}</td>
+            <td style="font-family:'DM Mono',monospace;font-size:12px;">{% if item.record.time_out %}{{ item.record.time_out|time:"h:i A" }}{% else %}<span style="color:var(--gray-400);">—</span>{% endif %}</td>
+            <td style="font-size:12px;color:var(--gray-400);">{% if item.duration_display %}{{ item.duration_display }}{% else %}<span style="color:var(--teal-400);">On campus</span>{% endif %}</td>
+            <td>
+              {% if item.record.is_timed_out %}<span class="status-badge out"><span class="status-dot"></span>Timed Out</span>
+              {% elif item.is_late %}<span class="status-badge late"><span class="status-dot"></span>Late · {{ item.minutes_late }}m</span>
+              {% else %}<span class="status-badge in"><span class="status-dot"></span>On Time</span>{% endif %}
+            </td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="5"><div class="empty-state"><i class="ti ti-calendar-off"></i>No attendance records yet.</div></td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Recent Sessions -->
+    <div class="card">
+      <div class="card-header">
+        <div><div class="card-title">Recent Sessions</div><div class="card-subtitle">Your last 5 classroom sessions</div></div>
+        <a href="{% url 'professor_sessions' %}" class="card-link">View all →</a>
+      </div>
+      {% for item in recent_sessions %}
+      <div class="session-item">
+        <div class="session-icon"><i class="ti ti-book"></i></div>
+        <div>
+          <div class="session-subject">{{ item.session.subject_code }}</div>
+          <div class="session-meta">{{ item.session.classroom }} · {{ item.session.day_record.date }}</div>
+        </div>
+        <div class="session-time">
+          {{ item.session.start_time|time:"h:i A" }}
+          {% if item.is_ongoing %}<br><span style="color:var(--teal-400);font-size:10px;">Ongoing</span>{% endif %}
+        </div>
+      </div>
+      {% empty %}
+      <div class="empty-state"><i class="ti ti-clock-off"></i>No sessions logged yet.</div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- RIGHT -->
+  <div>
+    <!-- QR Code -->
+    <div class="card" style="margin-bottom:20px;">
+      <div class="card-header"><div class="card-title">My QR Code</div></div>
+      <div class="qr-preview">
+        {% if professor.qr_code %}
+          <div class="qr-img-wrap"><img src="{{ professor.qr_code.url }}" alt="My QR Code" /></div>
+          <p style="font-size:11px;color:var(--gray-400);text-align:center;margin-bottom:12px;">Scan at the entrance to record attendance.</p>
+          <div style="display:flex;gap:8px;width:100%;">
+            <a href="{% url 'professor_qr' %}" class="btn btn-outline btn-sm" style="flex:1;justify-content:center;"><i class="ti ti-maximize"></i> Full View</a>
+            <a href="{{ professor.qr_code.url }}" download class="btn btn-primary btn-sm" style="flex:1;justify-content:center;"><i class="ti ti-download"></i> Download</a>
+          </div>
+        {% else %}
+          <div class="empty-state"><i class="ti ti-qrcode"></i>QR code not yet generated.</div>
+          <a href="{% url 'professor_qr' %}" class="btn btn-primary btn-sm" style="margin-top:8px;"><i class="ti ti-refresh"></i> Generate QR</a>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Quick Info -->
+    <div class="card">
+      <div class="card-header"><div class="card-title">My Info</div></div>
+      <div style="padding:16px 20px;display:flex;flex-direction:column;gap:12px;">
+        <div style="display:flex;justify-content:space-between;font-size:13px;"><span style="color:var(--gray-400);">Employee ID</span><span style="font-weight:500;font-family:'DM Mono',monospace;">{{ professor.employee_id }}</span></div>
+        <div style="display:flex;justify-content:space-between;font-size:13px;"><span style="color:var(--gray-400);">Department</span><span style="font-weight:500;">{{ professor.department }}</span></div>
+        <div style="display:flex;justify-content:space-between;font-size:13px;"><span style="color:var(--gray-400);">Phone</span><span style="font-weight:500;">{{ professor.phone_number }}</span></div>
+        {% if professor.expected_time_in %}
+        <div style="display:flex;justify-content:space-between;font-size:13px;"><span style="color:var(--gray-400);">Expected In</span><span style="font-weight:500;color:var(--blue-600);">{{ professor.expected_time_in|time:"h:i A" }}</span></div>
+        {% endif %}
+        <div style="padding-top:8px;border-top:1px solid var(--blue-50);">
+          <a href="{% url 'professor_profile' %}" class="btn btn-outline btn-sm" style="width:100%;justify-content:center;"><i class="ti ti-edit"></i> Edit Profile</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+{% endblock %}

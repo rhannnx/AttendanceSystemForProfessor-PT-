@@ -1,0 +1,21 @@
+# Virtual environment
+venv/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Environment variables
+.env
+
+# SQLite database
+db.sqlite3
+
+# VS Code
+.vscode/
+
+# Static build files
+staticfiles/
+
+# OS files
+.DS_Store

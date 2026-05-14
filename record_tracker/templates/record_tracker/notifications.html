@@ -1,0 +1,110 @@
+{% extends 'record_tracker/base.html' %}
+{% load static %}
+
+{% block title %}Notifications{% endblock %}
+{% block header_title %}Notifications{% endblock %}
+{% block header_subtitle %}SMS and email alert history{% endblock %}
+
+{% block extra_css %}
+.content { padding: 24px; flex: 1; max-width: 860px; }
+.tabs { display:flex; gap:4px; background:white; border:1px solid var(--blue-100); border-radius:10px; padding:4px; margin-bottom:20px; width:fit-content; }
+.tab { padding:7px 16px; border-radius:7px; font-size:13px; font-weight:500; cursor:pointer; color:var(--gray-400); transition:all .15s; border:none; background:none; font-family:'DM Sans',sans-serif; }
+.tab.active { background:var(--blue-600); color:white; }
+.notif-group-label { font-size:12px; font-weight:600; color:var(--gray-400); text-transform:uppercase; letter-spacing:.5px; margin-bottom:10px; display:flex; align-items:center; gap:8px; }
+.new-badge { background:var(--blue-400); color:white; font-size:10px; font-weight:600; padding:2px 7px; border-radius:20px; }
+.notif-group { margin-bottom:24px; }
+.notif-item { background:white; border:1px solid var(--blue-100); border-radius:12px; padding:16px; margin-bottom:8px; display:flex; gap:14px; align-items:flex-start; transition:all .15s; cursor:pointer; }
+.notif-item:hover { border-color:var(--blue-200); box-shadow:0 2px 8px rgba(4,44,83,.08); }
+.notif-item.unread { border-left:3px solid var(--blue-400); }
+.notif-icon { width:40px; height:40px; border-radius:10px; display:flex; align-items:center; justify-content:center; font-size:18px; flex-shrink:0; }
+.notif-icon.timein  { background:var(--teal-50); color:var(--teal-600); }
+.notif-icon.timeout { background:var(--blue-50); color:var(--blue-600); }
+.notif-content { flex:1; }
+.notif-title { font-size:13px; font-weight:500; margin-bottom:3px; }
+.notif-body { font-size:12px; color:var(--gray-400); line-height:1.5; }
+.notif-time { font-size:11px; color:var(--gray-400); margin-top:6px; font-family:'DM Mono',monospace; }
+.notif-tag { display:inline-flex; align-items:center; gap:3px; padding:2px 8px; border-radius:20px; font-size:10px; font-weight:600; margin-top:6px; text-transform:uppercase; letter-spacing:.5px; }
+.notif-tag.sms   { background:var(--teal-50); color:var(--teal-600); }
+.notif-tag.email { background:var(--blue-50); color:var(--blue-600); }
+.unread-dot { width:8px; height:8px; border-radius:50%; background:var(--blue-400); flex-shrink:0; margin-top:4px; }
+{% endblock %}
+
+{% block header_actions %}
+<button class="btn btn-outline" onclick="markAllRead()"><i class="ti ti-checks"></i> Mark all as read</button>
+{% endblock %}
+
+{% block content %}
+<div class="tabs">
+  <button class="tab active" onclick="filterTab('all',this)">All</button>
+  <button class="tab" onclick="filterTab('timein',this)">Time In</button>
+  <button class="tab" onclick="filterTab('timeout',this)">Time Out</button>
+</div>
+
+{% if today_notifications %}
+<div class="notif-group">
+  <div class="notif-group-label">Today <span class="new-badge">{{ today_notifications|length }} NEW</span></div>
+  {% for notif in today_notifications %}
+  <div class="notif-item unread" data-type="{{ notif.type }}">
+    <div class="notif-icon {{ notif.type }}">
+      {% if notif.type == 'timein' %}<i class="ti ti-login"></i>{% else %}<i class="ti ti-logout"></i>{% endif %}
+    </div>
+    <div class="notif-content">
+      <div class="notif-title">{{ notif.title }}</div>
+      <div class="notif-body">{{ notif.message }}</div>
+      <div style="display:flex;gap:6px;margin-top:6px;">
+        <span class="notif-tag sms"><i class="ti ti-message" style="font-size:9px;"></i> SMS Sent</span>
+        <span class="notif-tag email"><i class="ti ti-mail" style="font-size:9px;"></i> Email Sent</span>
+      </div>
+      <div class="notif-time">{{ notif.time }}</div>
+    </div>
+    <div class="unread-dot"></div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if earlier_notifications %}
+<div class="notif-group">
+  <div class="notif-group-label">Earlier</div>
+  {% for notif in earlier_notifications %}
+  <div class="notif-item" data-type="{{ notif.type }}">
+    <div class="notif-icon {{ notif.type }}">
+      {% if notif.type == 'timein' %}<i class="ti ti-login"></i>{% else %}<i class="ti ti-logout"></i>{% endif %}
+    </div>
+    <div class="notif-content">
+      <div class="notif-title">{{ notif.title }}</div>
+      <div class="notif-body">{{ notif.message }}</div>
+      <div style="display:flex;gap:6px;margin-top:6px;">
+        <span class="notif-tag sms"><i class="ti ti-message" style="font-size:9px;"></i> SMS Sent</span>
+        <span class="notif-tag email"><i class="ti ti-mail" style="font-size:9px;"></i> Email Sent</span>
+      </div>
+      <div class="notif-time">{{ notif.time }}</div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+{% endif %}
+
+{% if not today_notifications and not earlier_notifications %}
+<div class="empty-state" style="padding:60px 40px;">
+  <i class="ti ti-bell-off" style="font-size:40px;"></i>
+  <p>No notifications yet. They will appear here when professors time in or out.</p>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function filterTab(type, btn) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  btn.classList.add('active');
+  document.querySelectorAll('.notif-item').forEach(item => {
+    item.style.display = (type==='all'||item.dataset.type===type) ? '':'none';
+  });
+}
+function markAllRead() {
+  document.querySelectorAll('.notif-item.unread').forEach(item => item.classList.remove('unread'));
+  document.querySelectorAll('.unread-dot').forEach(dot => dot.remove());
+}
+</script>
+{% endblock %}

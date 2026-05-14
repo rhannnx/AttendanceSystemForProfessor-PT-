@@ -1,0 +1,73 @@
+{% extends 'professor/base.html' %}
+{% load static %}
+
+{% block title %}My QR Code{% endblock %}
+{% block header_title %}My QR Code{% endblock %}
+{% block header_subtitle %}Use this to record your attendance{% endblock %}
+
+{% block extra_css %}
+.qr-center { display:flex; align-items:flex-start; justify-content:center; }
+.qr-card { background:white; border-radius:16px; border:1px solid var(--blue-100); padding:40px; display:flex; flex-direction:column; align-items:center; max-width:440px; width:100%; }
+.qr-frame { width:220px; height:220px; border:3px solid var(--blue-100); border-radius:16px; display:flex; align-items:center; justify-content:center; overflow:hidden; margin-bottom:20px; padding:8px; }
+.qr-frame img { width:100%; height:100%; object-fit:contain; }
+.prof-info-box { background:var(--blue-50); border-radius:10px; padding:14px 20px; width:100%; margin-bottom:20px; }
+.info-row { display:flex; justify-content:space-between; font-size:13px; padding:4px 0; }
+.info-label { color:var(--gray-400); }
+.info-value { font-weight:500; }
+.btn-group { display:flex; gap:10px; width:100%; }
+.btn-group .btn { flex:1; justify-content:center; }
+.instructions { margin-top:24px; background:var(--teal-50); border-radius:10px; padding:14px 16px; width:100%; }
+.instructions h4 { font-size:12px; font-weight:600; color:var(--teal-600); margin-bottom:8px; display:flex; align-items:center; gap:6px; }
+.instructions ol { padding-left:16px; font-size:12px; color:var(--teal-600); line-height:1.8; }
+{% endblock %}
+
+{% block content %}
+<div class="qr-center">
+  <div class="qr-card">
+    <div style="font-family:'Sora',sans-serif;font-size:18px;font-weight:600;color:var(--blue-900);margin-bottom:4px;">My Attendance QR Code</div>
+    <div style="font-size:13px;color:var(--gray-400);margin-bottom:28px;text-align:center;">Show or scan this QR code at the campus entrance to record your time in and time out.</div>
+
+    <div class="qr-frame">
+      {% if professor.qr_code %}
+        <img src="{{ professor.qr_code.url }}" alt="QR Code" />
+      {% else %}
+        <div style="text-align:center;color:var(--gray-400);">
+          <i class="ti ti-qrcode" style="font-size:48px;color:var(--blue-100);display:block;margin-bottom:8px;"></i>
+          <span style="font-size:12px;">Not generated yet</span>
+        </div>
+      {% endif %}
+    </div>
+
+    <div class="prof-info-box">
+      <div class="info-row"><span class="info-label">Name</span><span class="info-value">{{ professor.user.get_full_name }}</span></div>
+      <div class="info-row"><span class="info-label">Employee ID</span><span class="info-value" style="font-family:'DM Mono',monospace;">{{ professor.employee_id }}</span></div>
+      <div class="info-row"><span class="info-label">Department</span><span class="info-value">{{ professor.department }}</span></div>
+    </div>
+
+    <div class="btn-group">
+      {% if professor.qr_code %}
+        <a href="{{ professor.qr_code.url }}" download="qr_{{ professor.employee_id }}.png" class="btn btn-primary">
+          <i class="ti ti-download"></i> Download
+        </a>
+        <a href="{% url 'generate_qr' professor.id %}" class="btn btn-outline">
+          <i class="ti ti-refresh"></i> Regenerate
+        </a>
+      {% else %}
+        <a href="{% url 'generate_qr' professor.id %}" class="btn btn-primary">
+          <i class="ti ti-qrcode"></i> Generate QR Code
+        </a>
+      {% endif %}
+    </div>
+
+    <div class="instructions">
+      <h4><i class="ti ti-info-circle"></i> How to use your QR Code</h4>
+      <ol>
+        <li>Connect to SBC school WiFi</li>
+        <li>Show your QR code to the scanner at the entrance</li>
+        <li>Wait for the confirmation</li>
+        <li>Repeat when leaving campus to time out</li>
+      </ol>
+    </div>
+  </div>
+</div>
+{% endblock %}
