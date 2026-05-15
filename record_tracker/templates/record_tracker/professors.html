@@ -37,61 +37,235 @@
 {% endblock %}
 
 {% block content %}
+
+<!-- STATS -->
 <div class="stats-grid">
   <div class="stat-card blue"><div class="stat-icon blue"><i class="ti ti-users"></i></div><div class="stat-value">{{ total_professors }}</div><div class="stat-label">Total Professors</div></div>
   <div class="stat-card teal"><div class="stat-icon teal"><i class="ti ti-building"></i></div><div class="stat-value">{{ total_departments }}</div><div class="stat-label">Departments</div></div>
   <div class="stat-card amber"><div class="stat-icon amber"><i class="ti ti-calendar-check"></i></div><div class="stat-value">{{ present_today }}</div><div class="stat-label">Present Today</div></div>
 </div>
+
+<!-- TABLE -->
 <div class="card">
   <div class="card-header">
-    <div><div class="card-title">All Professors</div><div class="card-subtitle">{{ total_professors }} registered professor{{ total_professors|pluralize }}</div></div>
+    <div>
+      <div class="card-title">All Professors</div>
+      <div class="card-subtitle">{{ total_professors }} registered professor{{ total_professors|pluralize }}</div>
+    </div>
   </div>
   <table class="prof-table">
-    <thead><tr><th>Professor</th><th>Employee ID</th><th>Department</th><th>Phone</th><th>Expected Time In</th><th>Actions</th></tr></thead>
+    <thead>
+      <tr>
+        <th>Professor</th>
+        <th>Employee ID</th>
+        <th>Department</th>
+        <th>Phone</th>
+        <th>Expected Time In</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
     <tbody id="professorTable">
       {% for professor in professors %}
       <tr>
-        <td><div class="prof-info"><div class="prof-avatar">{{ professor.user.first_name|slice:":1" }}{{ professor.user.last_name|slice:":1" }}</div><div><div class="prof-name">{{ professor.user.get_full_name }}</div><div class="prof-id">{{ professor.user.email|default:"No email" }}</div></div></div></td>
+        <td>
+          <div class="prof-info">
+            <div class="prof-avatar">{{ professor.user.first_name|slice:":1" }}{{ professor.user.last_name|slice:":1" }}</div>
+            <div>
+              <div class="prof-name">{{ professor.user.get_full_name }}</div>
+              <div class="prof-id">{{ professor.user.email|default:"No email" }}</div>
+            </div>
+          </div>
+        </td>
         <td><span style="font-family:'DM Mono',monospace;font-size:12px;background:var(--blue-50);padding:3px 8px;border-radius:6px;">{{ professor.employee_id }}</span></td>
         <td><span class="dept-badge">{{ professor.department }}</span></td>
         <td style="color:var(--gray-400);">{{ professor.phone_number }}</td>
-        <td>{% if professor.expected_time_in %}<span class="time-badge"><i class="ti ti-clock" style="font-size:11px;"></i>{{ professor.expected_time_in|time:"h:i A" }}</span>{% else %}<span style="font-size:12px;color:var(--gray-400);">—</span>{% endif %}</td>
-        <td><div class="action-btns"><a href="/admin/record_tracker/professor/{{ professor.id }}/change/" class="icon-btn-sm edit"><i class="ti ti-edit"></i></a><a href="/admin/record_tracker/professor/{{ professor.id }}/delete/" class="icon-btn-sm delete"><i class="ti ti-trash"></i></a></div></td>
+        <td>
+          {% if professor.expected_time_in %}
+            <span class="time-badge"><i class="ti ti-clock" style="font-size:11px;"></i>{{ professor.expected_time_in|time:"h:i A" }}</span>
+          {% else %}
+            <span style="font-size:12px;color:var(--gray-400);">—</span>
+          {% endif %}
+        </td>
+        <td>
+          <div class="action-btns">
+            <!-- Edit opens modal -->
+            <button class="icon-btn-sm edit" title="Edit"
+              onclick="openEditModal(
+                {{ professor.id }},
+                '{{ professor.user.first_name|escapejs }}',
+                '{{ professor.user.last_name|escapejs }}',
+                '{{ professor.user.email|escapejs }}',
+                '{{ professor.employee_id|escapejs }}',
+                '{{ professor.phone_number|escapejs }}',
+                '{{ professor.department|escapejs }}',
+                '{{ professor.expected_time_in|time:"H:i"|default:"" }}'
+              )">
+              <i class="ti ti-edit"></i>
+            </button>
+            <!-- Delete opens modal -->
+            <button class="icon-btn-sm delete" title="Delete"
+              onclick="openDeleteModal({{ professor.id }}, '{{ professor.user.get_full_name|escapejs }}')">
+              <i class="ti ti-trash"></i>
+            </button>
+          </div>
+        </td>
       </tr>
-      {% empty %}<tr><td colspan="6"><div class="empty-state"><i class="ti ti-users-off"></i>No professors registered yet.</div></td></tr>{% endfor %}
+      {% empty %}
+      <tr><td colspan="6"><div class="empty-state"><i class="ti ti-users-off"></i>No professors registered yet.</div></td></tr>
+      {% endfor %}
     </tbody>
   </table>
 </div>
 
+<!-- ADD PROFESSOR MODAL -->
 <div class="modal-overlay" id="addModal">
   <div class="modal" style="width:500px;">
     <div class="modal-title"><i class="ti ti-user-plus" style="color:var(--blue-600);"></i>Add New Professor</div>
-    <form method="POST" action="{% url 'add_professor' %}">{% csrf_token %}
+    <form method="POST" action="{% url 'add_professor' %}">
+      {% csrf_token %}
       <div class="section-divider">Account Information</div>
-      <div class="form-grid-2"><div class="form-group"><label class="form-label">First Name *</label><input type="text" name="first_name" class="form-input" placeholder="e.g. Maria" required /></div><div class="form-group"><label class="form-label">Last Name *</label><input type="text" name="last_name" class="form-input" placeholder="e.g. Santos" required /></div></div>
+      <div class="form-grid-2">
+        <div class="form-group"><label class="form-label">First Name *</label><input type="text" name="first_name" class="form-input" placeholder="e.g. Maria" required /></div>
+        <div class="form-group"><label class="form-label">Last Name *</label><input type="text" name="last_name" class="form-input" placeholder="e.g. Santos" required /></div>
+      </div>
       <div class="form-group"><label class="form-label">Email *</label><input type="email" name="email" class="form-input" placeholder="e.g. msantos@sbc.edu.ph" required /></div>
-      <div class="form-grid-2"><div class="form-group"><label class="form-label">Username *</label><input type="text" name="username" class="form-input" required /></div><div class="form-group"><label class="form-label">Password *</label><input type="password" name="password" class="form-input" required /></div></div>
+      <div class="form-grid-2">
+        <div class="form-group"><label class="form-label">Username *</label><input type="text" name="username" class="form-input" required /></div>
+        <div class="form-group"><label class="form-label">Password *</label><input type="password" name="password" class="form-input" required /></div>
+      </div>
       <div class="section-divider">Professor Details</div>
-      <div class="form-grid-2"><div class="form-group"><label class="form-label">Employee ID *</label><input type="text" name="employee_id" class="form-input" placeholder="e.g. EMP002" required /></div><div class="form-group"><label class="form-label">Phone Number *</label><input type="text" name="phone_number" class="form-input" placeholder="e.g. 09XXXXXXXXX" required /></div></div>
+      <div class="form-grid-2">
+        <div class="form-group"><label class="form-label">Employee ID *</label><input type="text" name="employee_id" class="form-input" placeholder="e.g. EMP002" required /></div>
+        <div class="form-group"><label class="form-label">Phone Number *</label><input type="text" name="phone_number" class="form-input" placeholder="e.g. 09XXXXXXXXX" required /></div>
+      </div>
       <div class="form-group"><label class="form-label">Department *</label><input type="text" name="department" class="form-input" placeholder="e.g. IT Department" required /></div>
-      <div class="form-group"><label class="form-label">Expected Time In</label><input type="time" name="expected_time_in" class="form-input" /><span class="form-hint">Used to detect tardiness. Leave blank if no fixed schedule.</span></div>
-      <div class="modal-actions"><button type="button" class="btn btn-outline" onclick="document.getElementById('addModal').classList.remove('show')">Cancel</button><button type="submit" class="btn btn-primary"><i class="ti ti-check"></i> Save Professor</button></div>
+      <div class="form-group">
+        <label class="form-label">Expected Time In</label>
+        <input type="time" name="expected_time_in" class="form-input" />
+        <span class="form-hint">Used to detect tardiness. Leave blank if no fixed schedule.</span>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-outline" onclick="document.getElementById('addModal').classList.remove('show')">Cancel</button>
+        <button type="submit" class="btn btn-primary"><i class="ti ti-check"></i> Save Professor</button>
+      </div>
     </form>
   </div>
 </div>
+
+<!-- EDIT PROFESSOR MODAL -->
+<div class="modal-overlay" id="editModal">
+  <div class="modal" style="width:500px;">
+    <div class="modal-title"><i class="ti ti-edit" style="color:var(--blue-600);"></i>Edit Professor</div>
+    <form method="POST" id="editForm">
+      {% csrf_token %}
+      <div class="section-divider">Account Information</div>
+      <div class="form-grid-2">
+        <div class="form-group"><label class="form-label">First Name *</label><input type="text" name="first_name" id="editFirstName" class="form-input" required /></div>
+        <div class="form-group"><label class="form-label">Last Name *</label><input type="text" name="last_name" id="editLastName" class="form-input" required /></div>
+      </div>
+      <div class="form-group"><label class="form-label">Email</label><input type="email" name="email" id="editEmail" class="form-input" /></div>
+      <div class="form-group">
+        <label class="form-label">New Password <span style="color:var(--gray-400);font-weight:400;">(leave blank to keep current)</span></label>
+        <input type="password" name="password" class="form-input" placeholder="Leave blank to keep current" />
+      </div>
+      <div class="section-divider">Professor Details</div>
+      <div class="form-grid-2">
+        <div class="form-group"><label class="form-label">Employee ID *</label><input type="text" name="employee_id" id="editEmployeeId" class="form-input" required /></div>
+        <div class="form-group"><label class="form-label">Phone Number *</label><input type="text" name="phone_number" id="editPhone" class="form-input" required /></div>
+      </div>
+      <div class="form-group"><label class="form-label">Department *</label><input type="text" name="department" id="editDepartment" class="form-input" required /></div>
+      <div class="form-group">
+        <label class="form-label">Expected Time In</label>
+        <input type="time" name="expected_time_in" id="editExpectedTime" class="form-input" />
+        <span class="form-hint">Leave blank if no fixed schedule.</span>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-outline" onclick="document.getElementById('editModal').classList.remove('show')">Cancel</button>
+        <button type="submit" class="btn btn-primary"><i class="ti ti-check"></i> Update Professor</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- DELETE CONFIRMATION MODAL -->
+<div class="modal-overlay" id="deleteModal">
+  <div class="modal" style="width:380px;text-align:center;">
+    <div style="width:60px;height:60px;border-radius:50%;background:var(--red-50);margin:0 auto 18px;display:flex;align-items:center;justify-content:center;">
+      <i class="ti ti-trash" style="font-size:28px;color:var(--red-400);"></i>
+    </div>
+    <div style="font-size:17px;font-weight:600;color:var(--blue-900);margin-bottom:8px;">Remove Professor?</div>
+    <div style="font-size:13px;color:var(--gray-400);line-height:1.6;margin-bottom:24px;">
+      Are you sure you want to remove<br>
+      <strong style="color:var(--red-400);" id="deleteModalName"></strong>?<br>
+      <span style="font-size:12px;">This will permanently delete their account and all attendance records.</span>
+    </div>
+    <form id="deleteForm" method="POST" action="">
+      {% csrf_token %}
+    </form>
+    <div style="display:flex;gap:10px;">
+      <button class="btn btn-outline" style="flex:1;" onclick="document.getElementById('deleteModal').classList.remove('show')">
+        <i class="ti ti-x"></i> Cancel
+      </button>
+      <button class="btn btn-danger" style="flex:1;" onclick="document.getElementById('deleteForm').submit()">
+        <i class="ti ti-trash"></i> Yes, Remove
+      </button>
+    </div>
+  </div>
+</div>
+
 {% endblock %}
 
 {% block extra_js %}
 <script>
+// Search table
 function searchTable() {
   const q = document.getElementById('searchInput').value.toLowerCase();
   document.querySelectorAll('#professorTable tr').forEach(row => {
     const name = row.querySelector('.prof-name');
     const dept = row.querySelector('.dept-badge');
-    const id = row.querySelector('td:nth-child(2)');
-    if (name) row.style.display = (name.textContent.toLowerCase().includes(q)||(dept&&dept.textContent.toLowerCase().includes(q))||(id&&id.textContent.toLowerCase().includes(q))) ? '':'none';
+    const id   = row.querySelector('td:nth-child(2)');
+    if (name) row.style.display = (
+      name.textContent.toLowerCase().includes(q) ||
+      (dept && dept.textContent.toLowerCase().includes(q)) ||
+      (id   && id.textContent.toLowerCase().includes(q))
+    ) ? '' : 'none';
   });
 }
-document.getElementById('addModal').addEventListener('click', e => { if(e.target===e.currentTarget) e.currentTarget.classList.remove('show'); });
+
+// Open Edit Modal with pre-filled data
+function openEditModal(id, firstName, lastName, email, employeeId, phone, department, expectedTime) {
+  document.getElementById('editForm').action        = `/professors/${id}/edit/`;
+  document.getElementById('editFirstName').value    = firstName;
+  document.getElementById('editLastName').value     = lastName;
+  document.getElementById('editEmail').value        = email;
+  document.getElementById('editEmployeeId').value   = employeeId;
+  document.getElementById('editPhone').value        = phone;
+  document.getElementById('editDepartment').value   = department;
+  document.getElementById('editExpectedTime').value = expectedTime;
+  document.getElementById('editModal').classList.add('show');
+}
+
+// Open Delete Modal
+function openDeleteModal(id, name) {
+  document.getElementById('deleteModalName').textContent = name;
+  document.getElementById('deleteForm').action = `/professors/${id}/delete/`;
+  document.getElementById('deleteModal').classList.add('show');
+}
+
+// Close modals on backdrop click
+['addModal', 'editModal', 'deleteModal'].forEach(id => {
+  document.getElementById(id).addEventListener('click', function(e) {
+    if (e.target === this) this.classList.remove('show');
+  });
+});
+
+// Close on Escape key
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    ['addModal', 'editModal', 'deleteModal'].forEach(id => {
+      document.getElementById(id).classList.remove('show');
+    });
+  }
+});
 </script>
 {% endblock %}

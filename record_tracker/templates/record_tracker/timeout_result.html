@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>SBC Attendance | Time Out</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css"/>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'DM Sans', sans-serif; background: #042C53; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; }
+  .card { background: white; border-radius: 24px; padding: 40px 32px; max-width: 400px; width: 100%; text-align: center; box-shadow: 0 24px 80px rgba(0,0,0,0.4); }
+  .status-icon { width: 80px; height: 80px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 36px; margin: 0 auto 20px; }
+  .status-icon.success { background: #E6F1FB; color: #185FA5; }
+  .status-icon.already { background: #E1F5EE; color: #0F6E56; }
+  .status-icon.error   { background: #FEF3C7; color: #92400E; }
+  .status-title { font-size: 22px; font-weight: 600; color: #042C53; margin-bottom: 6px; }
+  .status-sub   { font-size: 14px; color: #888780; margin-bottom: 24px; }
+  .time-display { font-size: 32px; font-weight: 700; color: #042C53; margin: 8px 0 4px; }
+  .date-display { font-size: 13px; color: #888780; margin-bottom: 20px; }
+  .info-box { background: #E6F1FB; border-radius: 12px; padding: 16px 20px; margin-bottom: 20px; text-align: left; }
+  .info-row { display: flex; justify-content: space-between; align-items: center; padding: 5px 0; font-size: 13px; }
+  .info-label { color: #888780; }
+  .info-value { font-weight: 500; color: #042C53; }
+  .duration-box { background: #E1F5EE; border-radius: 12px; padding: 14px 18px; margin-bottom: 20px; display: flex; align-items: center; gap: 12px; }
+  .duration-box i { font-size: 22px; color: #0F6E56; }
+  .duration-title { font-size: 13px; font-weight: 600; color: #0F6E56; }
+  .duration-sub { font-size: 12px; color: #1D9E75; margin-top: 2px; }
+  .brand { display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 20px; }
+  .brand-icon { width: 28px; height: 28px; background: #378ADD; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: white; font-size: 14px; }
+  .brand-text { font-size: 13px; font-weight: 600; color: #888780; }
+</style>
+</head>
+<body>
+<div class="card">
+
+  {% if status == 'recorded' %}
+    <div class="status-icon success"><i class="ti ti-logout"></i></div>
+    <div class="status-title">Timed Out Successfully!</div>
+    <div class="status-sub">Your departure has been recorded</div>
+    <div class="time-display">{{ time_out }}</div>
+    <div class="date-display">{{ date }}</div>
+    <div class="info-box">
+      <div class="info-row">
+        <span class="info-label">Name</span>
+        <span class="info-value">{{ professor_name }}</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">Time In</span>
+        <span class="info-value">{{ time_in }}</span>
+      </div>
+      <div class="info-row">
+        <span class="info-label">Time Out</span>
+        <span class="info-value">{{ time_out }}</span>
+      </div>
+    </div>
+    <div class="duration-box">
+      <i class="ti ti-clock-check"></i>
+      <div>
+        <div class="duration-title">Total Time on Campus</div>
+        <div class="duration-sub">{{ duration }}</div>
+      </div>
+    </div>
+
+  {% elif status == 'already' %}
+    <div class="status-icon already"><i class="ti ti-circle-check"></i></div>
+    <div class="status-title">Already Timed Out</div>
+    <div class="status-sub">You already recorded your departure today</div>
+    <div class="time-display">{{ time_out }}</div>
+    <div class="date-display">{{ date }}</div>
+
+  {% elif status == 'no_timein' %}
+    <div class="status-icon error"><i class="ti ti-alert-circle"></i></div>
+    <div class="status-title">No Time-In Found</div>
+    <div class="status-sub">You need to time in first before timing out</div>
+
+  {% else %}
+    <div class="status-icon error"><i class="ti ti-alert-circle"></i></div>
+    <div class="status-title">Unable to Record</div>
+    <div class="status-sub">{{ error_message }}</div>
+  {% endif %}
+
+  <div class="brand">
+    <div class="brand-icon"><i class="ti ti-calendar-check"></i></div>
+    <div class="brand-text">SBC Attendance System</div>
+  </div>
+</div>
+</body>
+</html>

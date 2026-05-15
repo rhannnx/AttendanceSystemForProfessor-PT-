@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>SBC Attendance</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/tabler-icons.min.css"/>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'DM Sans', sans-serif; background: #042C53; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; }
+  .card { background: white; border-radius: 24px; padding: 40px 32px; max-width: 400px; width: 100%; text-align: center; box-shadow: 0 24px 80px rgba(0,0,0,0.4); }
+  .status-icon { width: 80px; height: 80px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 36px; margin: 0 auto 20px; }
+  .status-icon.success  { background: #E1F5EE; color: #0F6E56; }
+  .status-icon.late     { background: #FCEBEB; color: #A32D2D; }
+  .status-icon.timeout  { background: #E6F1FB; color: #185FA5; }
+  .status-icon.done     { background: #E1F5EE; color: #0F6E56; }
+  .status-icon.error    { background: #FEF3C7; color: #92400E; }
+  .status-title { font-size: 22px; font-weight: 600; color: #042C53; margin-bottom: 6px; }
+  .status-sub   { font-size: 14px; color: #888780; margin-bottom: 24px; }
+  .time-display { font-size: 32px; font-weight: 700; color: #042C53; margin: 8px 0 4px; }
+  .date-display { font-size: 13px; color: #888780; margin-bottom: 20px; }
+  .info-box { background: #E6F1FB; border-radius: 12px; padding: 16px 20px; margin-bottom: 16px; text-align: left; }
+  .info-row { display: flex; justify-content: space-between; align-items: center; padding: 5px 0; font-size: 13px; }
+  .info-label { color: #888780; }
+  .info-value { font-weight: 500; color: #042C53; }
+  .late-box { background: #FCEBEB; border-radius: 12px; padding: 14px 18px; margin-bottom: 16px; display: flex; align-items: center; gap: 12px; text-align: left; }
+  .late-box i { font-size: 22px; color: #E24B4A; flex-shrink: 0; }
+  .late-title { font-size: 13px; font-weight: 600; color: #A32D2D; }
+  .late-sub   { font-size: 12px; color: #E24B4A; margin-top: 2px; }
+  .duration-box { background: #E1F5EE; border-radius: 12px; padding: 14px 18px; margin-bottom: 16px; display: flex; align-items: center; gap: 12px; }
+  .duration-box i { font-size: 22px; color: #0F6E56; }
+  .duration-title { font-size: 13px; font-weight: 600; color: #0F6E56; }
+  .duration-sub   { font-size: 12px; color: #1D9E75; margin-top: 2px; }
+  .sessions-box { background: #E6F1FB; border-radius: 12px; padding: 14px 18px; margin-bottom: 16px; text-align: left; }
+  .sessions-title { font-size: 12px; font-weight: 600; color: #185FA5; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 10px; }
+  .session-item { display: flex; align-items: center; gap: 10px; padding: 7px 0; border-bottom: 1px solid rgba(55,138,221,0.15); }
+  .session-item:last-child { border-bottom: none; }
+  .session-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .session-dot.ontime   { background: #1D9E75; }
+  .session-dot.late     { background: #E24B4A; }
+  .session-info { flex: 1; }
+  .session-code { font-size: 13px; font-weight: 500; color: #042C53; }
+  .session-room { font-size: 11px; color: #888780; }
+  .session-time { font-size: 11px; color: #888780; font-family: monospace; text-align: right; }
+  /* Session status badges */
+  .sess-badge { display:inline-flex; align-items:center; gap:4px; padding:2px 8px; border-radius:20px; font-size:10px; font-weight:600; margin-top:3px; }
+  .sess-badge.upcoming { background:#E6F1FB; color:#185FA5; }
+  .sess-badge.ongoing  { background:#E1F5EE; color:#0F6E56; }
+  .sess-badge.finished { background:#F3F4F6; color:#6B7280; }
+  .brand { display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 20px; }
+  .brand-icon { width: 28px; height: 28px; background: #378ADD; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: white; font-size: 14px; }
+  .brand-text { font-size: 13px; font-weight: 600; color: #888780; }
+</style>
+</head>
+<body>
+<div class="card">
+
+  {% if status == 'created' %}
+    <!-- ✅ TIME IN -->
+    {% if is_late %}
+      <div class="status-icon late"><i class="ti ti-clock-exclamation"></i></div>
+      <div class="status-title">Timed In — Late</div>
+      <div class="status-sub">You have been marked late today</div>
+    {% else %}
+      <div class="status-icon success"><i class="ti ti-circle-check"></i></div>
+      <div class="status-title">Timed In Successfully!</div>
+      <div class="status-sub">Your attendance has been recorded</div>
+    {% endif %}
+    <div class="time-display">{{ time_in }}</div>
+    <div class="date-display">{{ date }}</div>
+    <div class="info-box">
+      <div class="info-row"><span class="info-label">Name</span><span class="info-value">{{ professor_name }}</span></div>
+      <div class="info-row"><span class="info-label">Department</span><span class="info-value">{{ department }}</span></div>
+      <div class="info-row"><span class="info-label">Employee ID</span><span class="info-value">{{ employee_id }}</span></div>
+    </div>
+    {% if is_late %}
+    <div class="late-box">
+      <i class="ti ti-alert-triangle"></i>
+      <div>
+        <div class="late-title">Late by {{ minutes_late }} minute{{ minutes_late|pluralize }}</div>
+        <div class="late-sub">Expected: {{ expected_time }} · Arrived: {{ time_in }}</div>
+      </div>
+    </div>
+    {% endif %}
+    {% if sessions %}
+    <div class="sessions-box">
+      <div class="sessions-title">Today's Sessions ({{ sessions|length }})</div>
+      {% for s in sessions %}
+      <div class="session-item">
+        <div class="session-dot {% if s.is_late %}late{% else %}ontime{% endif %}"></div>
+        <div class="session-info">
+          <div class="session-code">{{ s.subject_code }}</div>
+          <div class="session-room">{{ s.classroom }}</div>
+          <span class="sess-badge {{ s.status }}">
+            {% if s.status == 'upcoming' %}<i class="ti ti-clock" style="font-size:10px;"></i> Upcoming
+            {% elif s.status == 'ongoing' %}<i class="ti ti-player-play" style="font-size:10px;"></i> Ongoing
+            {% else %}<i class="ti ti-check" style="font-size:10px;"></i> Finished
+            {% endif %}
+          </span>
+        </div>
+        <div class="session-time">
+          {{ s.start_time }} – {{ s.end_time }}
+          {% if s.is_late %}<br><span style="color:#E24B4A;">Late {{ s.minutes_late }}m</span>{% endif %}
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+  {% elif status == 'timeout' %}
+    <!-- ✅ AUTO TIME OUT (second QR scan) -->
+    <div class="status-icon timeout"><i class="ti ti-logout"></i></div>
+    <div class="status-title">Timed Out Successfully!</div>
+    <div class="status-sub">Your departure has been recorded</div>
+    <div class="time-display">{{ time_out }}</div>
+    <div class="date-display">{{ date }}</div>
+    <div class="info-box">
+      <div class="info-row"><span class="info-label">Name</span><span class="info-value">{{ professor_name }}</span></div>
+      <div class="info-row"><span class="info-label">Time In</span><span class="info-value">{{ time_in }}</span></div>
+      <div class="info-row"><span class="info-label">Time Out</span><span class="info-value">{{ time_out }}</span></div>
+    </div>
+    <div class="duration-box">
+      <i class="ti ti-clock-check"></i>
+      <div>
+        <div class="duration-title">Total Time on Campus</div>
+        <div class="duration-sub">{{ duration }}</div>
+      </div>
+    </div>
+
+  {% elif status == 'completed' %}
+    <!-- ✅ ALREADY COMPLETED (timed in AND timed out) -->
+    <div class="status-icon done"><i class="ti ti-circle-check"></i></div>
+    <div class="status-title">Attendance Complete</div>
+    <div class="status-sub">You have already timed in and out today</div>
+    <div class="date-display" style="margin-top:16px;">{{ date }}</div>
+    <div class="info-box">
+      <div class="info-row"><span class="info-label">Name</span><span class="info-value">{{ professor_name }}</span></div>
+      <div class="info-row"><span class="info-label">Time In</span><span class="info-value">{{ time_in }}</span></div>
+      <div class="info-row"><span class="info-label">Time Out</span><span class="info-value">{{ time_out }}</span></div>
+      <div class="info-row"><span class="info-label">Duration</span><span class="info-value">{{ duration }}</span></div>
+    </div>
+
+  {% else %}
+    <!-- ❌ ERROR -->
+    <div class="status-icon error"><i class="ti ti-alert-circle"></i></div>
+    <div class="status-title">Unable to Record</div>
+    <div class="status-sub">{{ error_message }}</div>
+  {% endif %}
+
+  <div class="brand">
+    <div class="brand-icon"><i class="ti ti-calendar-check"></i></div>
+    <div class="brand-text">SBC Attendance System</div>
+  </div>
+</div>
+</body>
+</html>

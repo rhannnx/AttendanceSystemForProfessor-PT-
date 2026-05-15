@@ -6,10 +6,10 @@
 {% block header_subtitle %}Professor classroom session activity{% endblock %}
 
 {% block extra_css %}
-.stats-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:16px; margin-bottom:24px; }
+.stats-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:16px; margin-bottom:24px; }
 .sess-table { width:100%; border-collapse:collapse; }
 .sess-table th { font-size:11px; font-weight:600; color:var(--gray-400); text-transform:uppercase; letter-spacing:.5px; padding:12px 16px; text-align:left; border-bottom:1px solid var(--blue-50); }
-.sess-table td { padding:14px 16px; border-bottom:1px solid var(--blue-50); font-size:13px; }
+.sess-table td { padding:14px 16px; border-bottom:1px solid var(--blue-50); font-size:13px; vertical-align:middle; }
 .sess-table tr:last-child td { border-bottom:none; }
 .sess-table tr:hover td { background:var(--blue-50); }
 .prof-info { display:flex; align-items:center; gap:12px; }
@@ -17,8 +17,19 @@
 .prof-name { font-size:13px; font-weight:500; }
 .prof-dept { font-size:11px; color:var(--gray-400); }
 .subject-badge { display:inline-flex; align-items:center; padding:4px 10px; border-radius:20px; font-size:11px; font-weight:500; background:var(--blue-50); color:var(--blue-600); font-family:'DM Mono',monospace; }
-.filter-bar { display:flex; gap:10px; padding:12px 20px; border-bottom:1px solid var(--blue-50); align-items:center; }
+.filter-bar { display:flex; gap:10px; padding:12px 20px; border-bottom:1px solid var(--blue-50); align-items:center; flex-wrap:wrap; }
 .filter-select { border:1px solid var(--blue-100); border-radius:8px; padding:6px 12px; font-size:12px; font-family:'DM Sans',sans-serif; color:var(--blue-900); background:var(--blue-50); outline:none; cursor:pointer; }
+
+/* ✅ Session status badges */
+.sess-status { display:inline-flex; align-items:center; gap:5px; padding:4px 10px; border-radius:20px; font-size:11px; font-weight:600; }
+.sess-status.upcoming { background:#E6F1FB; color:#185FA5; }
+.sess-status.ongoing  { background:#E1F5EE; color:#0F6E56; }
+.sess-status.finished { background:#F3F4F6; color:#6B7280; }
+.sess-status.late     { background:var(--red-50); color:var(--red-600); }
+.status-dot { width:6px; height:6px; border-radius:50%; background:currentColor; }
+
+/* Late badge */
+.late-badge { display:inline-flex; align-items:center; gap:4px; padding:2px 8px; border-radius:20px; font-size:10px; font-weight:600; background:var(--red-50); color:var(--red-600); margin-left:6px; }
 {% endblock %}
 
 {% block header_actions %}
@@ -33,49 +44,106 @@
 {% endblock %}
 
 {% block content %}
+
+<!-- STATS — 4 cards now -->
 <div class="stats-grid">
-  <div class="stat-card blue"><div class="stat-icon blue"><i class="ti ti-clock"></i></div><div class="stat-value">{{ total_sessions }}</div><div class="stat-label">Total Sessions Today</div></div>
-  <div class="stat-card teal"><div class="stat-icon teal"><i class="ti ti-player-play"></i></div><div class="stat-value">{{ ongoing_sessions }}</div><div class="stat-label">Ongoing Sessions</div></div>
-  <div class="stat-card amber"><div class="stat-icon amber"><i class="ti ti-player-stop"></i></div><div class="stat-value">{{ completed_sessions }}</div><div class="stat-label">Completed Sessions</div></div>
+  <div class="stat-card blue">
+    <div class="stat-icon blue"><i class="ti ti-clock"></i></div>
+    <div class="stat-value">{{ total_sessions }}</div>
+    <div class="stat-label">Total Sessions</div>
+  </div>
+  <div class="stat-card amber">
+    <div class="stat-icon amber"><i class="ti ti-clock-up"></i></div>
+    <div class="stat-value">{{ upcoming_sessions }}</div>
+    <div class="stat-label">Upcoming</div>
+  </div>
+  <div class="stat-card teal">
+    <div class="stat-icon teal"><i class="ti ti-player-play"></i></div>
+    <div class="stat-value">{{ ongoing_sessions }}</div>
+    <div class="stat-label">Ongoing</div>
+  </div>
+  <div class="stat-card red">
+    <div class="stat-icon red"><i class="ti ti-player-stop"></i></div>
+    <div class="stat-value">{{ completed_sessions }}</div>
+    <div class="stat-label">Finished</div>
+  </div>
 </div>
 
 <div class="card">
   <div class="card-header">
-    <div><div class="card-title">Session Activity Log</div><div class="card-subtitle">{{ today }} — {{ total_sessions }} session{{ total_sessions|pluralize }} logged</div></div>
+    <div>
+      <div class="card-title">Session Activity Log</div>
+      <div class="card-subtitle">{{ today }} — {{ total_sessions }} session{{ total_sessions|pluralize }} logged</div>
+    </div>
   </div>
   <div class="filter-bar">
     <span style="font-size:12px;color:var(--gray-400);">Filter by:</span>
     <select class="filter-select" onchange="filterByStatus(this.value)">
       <option value="all">All Sessions</option>
+      <option value="upcoming">Upcoming</option>
       <option value="ongoing">Ongoing</option>
-      <option value="done">Completed</option>
+      <option value="finished">Finished</option>
     </select>
   </div>
   <table class="sess-table">
     <thead>
-      <tr><th>Professor</th><th>Subject Code</th><th>Classroom</th><th>Start Time</th><th>End Time</th><th>Duration</th><th>Status</th></tr>
+      <tr>
+        <th>Professor</th>
+        <th>Subject</th>
+        <th>Classroom</th>
+        <th>Scheduled</th>
+        <th>Time In</th>
+        <th>Status</th>
+        <th>Late</th>
+      </tr>
     </thead>
     <tbody id="sessionTable">
       {% for s in sessions %}
-      <tr data-status="{% if s.is_ongoing %}ongoing{% else %}done{% endif %}">
+      <tr data-status="{{ s.session_status }}">
         <td>
           <div class="prof-info">
             <div class="prof-avatar">{{ s.professor_initials }}</div>
-            <div><div class="prof-name">{{ s.professor_name }}</div><div class="prof-dept">{{ s.department }}</div></div>
+            <div>
+              <div class="prof-name">{{ s.professor_name }}</div>
+              <div class="prof-dept">{{ s.department }}</div>
+            </div>
           </div>
         </td>
         <td><span class="subject-badge">{{ s.subject_code }}</span></td>
         <td style="color:var(--gray-400);">{{ s.classroom }}</td>
-        <td style="font-family:'DM Mono',monospace;font-size:12px;">{{ s.start_time|time:"h:i A" }}</td>
-        <td style="font-family:'DM Mono',monospace;font-size:12px;">{% if s.end_time %}{{ s.end_time|time:"h:i A" }}{% else %}<span style="color:var(--gray-400);">—</span>{% endif %}</td>
-        <td style="font-size:12px;color:var(--gray-400);">{% if s.duration_display %}{{ s.duration_display }}{% else %}<span style="color:var(--teal-400);">Ongoing</span>{% endif %}</td>
+        <td style="font-family:'DM Mono',monospace;font-size:12px;">
+          {% if s.scheduled_start %}
+            {{ s.scheduled_start|time:"h:i A" }} – {{ s.scheduled_end|time:"h:i A" }}
+          {% else %}
+            <span style="color:var(--gray-400);">—</span>
+          {% endif %}
+        </td>
+        <td style="font-family:'DM Mono',monospace;font-size:12px;">
+          {{ s.start_time|time:"h:i A" }}
+        </td>
         <td>
-          {% if s.is_ongoing %}<span class="status-badge ongoing"><span class="status-dot"></span>Ongoing</span>
-          {% else %}<span class="status-badge done"><span class="status-dot"></span>Completed</span>{% endif %}
+          {% if s.session_status == 'upcoming' %}
+            <span class="sess-status upcoming"><span class="status-dot"></span>Upcoming</span>
+          {% elif s.session_status == 'ongoing' %}
+            <span class="sess-status ongoing"><span class="status-dot"></span>Ongoing</span>
+          {% else %}
+            <span class="sess-status finished"><span class="status-dot"></span>Finished</span>
+          {% endif %}
+        </td>
+        <td>
+          {% if s.is_late %}
+            <span class="late-badge"><i class="ti ti-alert-triangle" style="font-size:10px;"></i>{{ s.minutes_late }}m late</span>
+          {% else %}
+            <span style="font-size:12px;color:var(--gray-400);">On time</span>
+          {% endif %}
         </td>
       </tr>
       {% empty %}
-      <tr><td colspan="7"><div class="empty-state"><i class="ti ti-clock-off"></i>No sessions logged today yet.</div></td></tr>
+      <tr>
+        <td colspan="7">
+          <div class="empty-state"><i class="ti ti-clock-off"></i>No sessions logged today yet.</div>
+        </td>
+      </tr>
       {% endfor %}
     </tbody>
   </table>
@@ -89,12 +157,16 @@ function searchTable() {
   document.querySelectorAll('#sessionTable tr[data-status]').forEach(row => {
     const name    = row.querySelector('.prof-name');
     const subject = row.querySelector('.subject-badge');
-    if (name) row.style.display = (name.textContent.toLowerCase().includes(q)||(subject&&subject.textContent.toLowerCase().includes(q))) ? '':'none';
+    if (name) row.style.display = (
+      name.textContent.toLowerCase().includes(q) ||
+      (subject && subject.textContent.toLowerCase().includes(q))
+    ) ? '' : 'none';
   });
 }
+
 function filterByStatus(value) {
   document.querySelectorAll('#sessionTable tr[data-status]').forEach(row => {
-    row.style.display = (value==='all'||row.dataset.status===value) ? '':'none';
+    row.style.display = (value === 'all' || row.dataset.status === value) ? '' : 'none';
   });
 }
 </script>

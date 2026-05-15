@@ -21,9 +21,9 @@
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: 'DM Sans', sans-serif; background: var(--blue-50); color: var(--blue-900); display: flex; min-height: 100vh; font-size: 14px; }
 
-  /* ── Sidebar ── */
-  .sidebar { width: var(--sidebar-w); background: var(--blue-900); min-height: 100vh; position: fixed; left: 0; top: 0; display: flex; flex-direction: column; z-index: 100; }
-  .sidebar-brand { padding: 20px 20px 16px; border-bottom: 1px solid rgba(255,255,255,0.08); }
+  /* Sidebar */
+  .sidebar { width: var(--sidebar-w); background: var(--blue-900); height: 100vh; position: fixed; left: 0; top: 0; display: flex; flex-direction: column; z-index: 100; overflow-y: auto; }
+  .sidebar-brand { padding: 20px 20px 16px; border-bottom: 1px solid rgba(255,255,255,0.08); flex-shrink: 0; }
   .logo { display: flex; align-items: center; gap: 10px; }
   .logo-icon { width: 36px; height: 36px; background: var(--blue-400); border-radius: 10px; display: flex; align-items: center; justify-content: center; color: white; font-size: 18px; }
   .logo-text { font-size: 15px; font-weight: 600; color: white; line-height: 1.2; }
@@ -35,30 +35,16 @@
   .nav-item.active { background: var(--blue-600); color: white; }
   .nav-item i { font-size: 17px; }
 
-  /* ── Sidebar footer / user dropdown ── */
-  .sidebar-footer { margin-top: auto; padding: 16px; border-top: 1px solid rgba(255,255,255,0.08); position: relative; }
-  .user-card { display: flex; align-items: center; gap: 10px; cursor: pointer; padding: 6px 4px; border-radius: 8px; transition: background 0.15s; }
-  .user-card:hover { background: rgba(255,255,255,0.06); }
+  /* Sidebar footer */
+  .sidebar-footer { margin-top: auto; padding: 12px 16px; border-top: 1px solid rgba(255,255,255,0.08); flex-shrink: 0; }
+  .user-info { display: flex; align-items: center; gap: 10px; padding: 4px; margin-bottom: 10px; }
   .user-avatar { width: 36px; height: 36px; border-radius: 50%; background: var(--blue-400); display: flex; align-items: center; justify-content: center; color: white; font-size: 13px; font-weight: 600; flex-shrink: 0; }
-  .user-name { font-size: 13px; font-weight: 500; color: white; }
+  .user-name { font-size: 13px; font-weight: 500; color: white; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .user-role { font-size: 11px; color: var(--blue-200); }
-  .user-chevron { color: rgba(255,255,255,0.4); font-size: 14px; margin-left: auto; transition: transform 0.2s; }
+  .signout-btn { display: flex; align-items: center; gap: 8px; padding: 9px 12px; border-radius: 8px; color: #F87171; text-decoration: none; font-size: 13px; transition: background 0.15s; cursor: pointer; width: 100%; border: none; background: transparent; font-family: 'DM Sans', sans-serif; }
+  .signout-btn:hover { background: rgba(248,113,113,0.1); }
 
-  .user-menu {
-    display: none; position: absolute; bottom: 72px; left: 12px; right: 12px;
-    background: var(--blue-800); border-radius: 10px;
-    border: 1px solid rgba(255,255,255,0.1);
-    overflow: hidden; z-index: 200;
-    box-shadow: 0 8px 24px rgba(0,0,0,0.3);
-  }
-  .user-menu.open { display: block; }
-  .user-menu a { display: flex; align-items: center; gap: 10px; padding: 11px 14px; color: rgba(255,255,255,0.8); text-decoration: none; font-size: 13px; transition: background 0.15s; }
-  .user-menu a:hover { background: rgba(255,255,255,0.08); }
-  .user-menu a i { font-size: 16px; }
-  .user-menu-divider { height: 1px; background: rgba(255,255,255,0.08); }
-  .user-menu a.danger { color: #F87171; }
-
-  /* ── Main area ── */
+  /* Main */
   .main { margin-left: var(--sidebar-w); flex: 1; display: flex; flex-direction: column; min-height: 100vh; }
   .header { height: var(--header-h); background: white; border-bottom: 1px solid var(--blue-100); display: flex; align-items: center; padding: 0 24px; gap: 16px; position: sticky; top: 0; z-index: 50; }
   .header-title { font-family: 'Sora', sans-serif; font-size: 16px; font-weight: 600; color: var(--blue-900); }
@@ -66,7 +52,7 @@
   .header-actions { margin-left: auto; display: flex; align-items: center; gap: 10px; }
   .content { padding: 24px; flex: 1; }
 
-  /* ── Common components ── */
+  /* Common components */
   .btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; border-radius: 8px; font-size: 13px; font-weight: 500; cursor: pointer; border: none; transition: all 0.15s; font-family: 'DM Sans', sans-serif; text-decoration: none; }
   .btn-primary { background: var(--blue-600); color: white; }
   .btn-primary:hover { background: var(--blue-800); }
@@ -116,18 +102,24 @@
   .form-input:focus { border-color: var(--blue-400); box-shadow: 0 0 0 3px rgba(55,138,221,0.1); }
   .form-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 
-  /* ── Toast ── */
+  /* Toast */
   .toast { position: fixed; bottom: 24px; right: 24px; color: white; padding: 12px 18px; border-radius: 10px; font-size: 13px; display: none; align-items: center; gap: 10px; z-index: 400; box-shadow: 0 8px 24px rgba(4,44,83,0.3); }
   .toast.show { display: flex; }
   .toast.success { background: var(--teal-600); }
   .toast.error   { background: var(--red-600); }
+
+  /* Logout modal */
+  .logout-modal { display:none; position:fixed; inset:0; background:rgba(4,44,83,0.5); z-index:500; align-items:center; justify-content:center; }
+  .logout-modal.show { display:flex; }
+  .logout-modal-box { background:white; border-radius:16px; padding:28px; width:340px; max-width:90vw; text-align:center; box-shadow:0 20px 60px rgba(4,44,83,0.25); }
+  .logout-icon { width:52px; height:52px; background:var(--red-50); border-radius:50%; display:flex; align-items:center; justify-content:center; margin:0 auto 16px; }
 
   {% block extra_css %}{% endblock %}
 </style>
 </head>
 <body>
 
-<!-- ══ SIDEBAR ══ -->
+<!-- SIDEBAR -->
 <aside class="sidebar">
   <div class="sidebar-brand">
     <div class="logo">
@@ -158,31 +150,25 @@
     </a>
   </div>
 
-  <!-- User footer with dropdown -->
+  <!-- ✅ FIXED Footer — no broken divs -->
   <div class="sidebar-footer">
-    <div class="user-menu" id="userMenu">
-      <a href="{% url 'professor_profile' %}">
-        <i class="ti ti-user"></i> My Profile
-      </a>
-      <div class="user-menu-divider"></div>
-      <a href="{% url 'logout' %}" class="danger">
-        <i class="ti ti-logout"></i> Sign Out
-      </a>
-    </div>
-    <div class="user-card" onclick="toggleUserMenu()">
+    <div class="user-info">
       <div class="user-avatar">
         {{ request.user.first_name|slice:":1"|upper }}{{ request.user.last_name|slice:":1"|upper }}
       </div>
-      <div style="flex:1; min-width:0;">
+      <div style="flex:1;min-width:0;">
         <div class="user-name">{{ request.user.get_full_name|default:request.user.username }}</div>
         <div class="user-role">{% block user_role %}Part-Time Professor{% endblock %}</div>
       </div>
-      <i class="ti ti-chevron-up user-chevron" id="userChevron"></i>
     </div>
+    <!-- ✅ Always visible Sign Out button -->
+    <button class="signout-btn" onclick="document.getElementById('logoutModal').classList.add('show')">
+      <i class="ti ti-logout" style="font-size:17px;"></i> Sign Out
+    </button>
   </div>
 </aside>
 
-<!-- ══ MAIN ══ -->
+<!-- MAIN -->
 <div class="main">
   <header class="header">
     <div>
@@ -193,33 +179,42 @@
       {% block header_actions %}{% endblock %}
     </div>
   </header>
-
   <div class="content">
     {% block content %}{% endblock %}
   </div>
 </div>
 
-<!-- Toast (shared) -->
+<!-- Toast -->
 <div class="toast" id="toast">
   <i class="ti ti-check-circle"></i>
   <span id="toastMsg"></span>
 </div>
 
-<script>
-function toggleUserMenu() {
-  const menu    = document.getElementById('userMenu');
-  const chevron = document.getElementById('userChevron');
-  const isOpen  = menu.classList.contains('open');
-  menu.classList.toggle('open', !isOpen);
-  chevron.style.transform = isOpen ? 'rotate(0deg)' : 'rotate(180deg)';
-}
+<!-- ✅ Logout Confirmation Modal -->
+<div class="logout-modal" id="logoutModal">
+  <div class="logout-modal-box">
+    <div class="logout-icon">
+      <i class="ti ti-logout" style="font-size:24px;color:var(--red-400);"></i>
+    </div>
+    <div style="font-family:'Sora',sans-serif;font-size:16px;font-weight:600;color:var(--blue-900);margin-bottom:8px;">Sign Out?</div>
+    <div style="font-size:13px;color:var(--gray-400);margin-bottom:24px;">Are you sure you want to sign out of your account?</div>
+    <div style="display:flex;gap:10px;">
+      <button onclick="document.getElementById('logoutModal').classList.remove('show')"
+        style="flex:1;padding:10px;border-radius:8px;border:1.5px solid var(--blue-100);background:white;color:var(--blue-600);font-size:13px;font-weight:500;cursor:pointer;font-family:'DM Sans',sans-serif;">
+        Cancel
+      </button>
+      <a href="{% url 'logout' %}"
+        style="flex:1;padding:10px;border-radius:8px;background:var(--red-400);color:white;font-size:13px;font-weight:500;text-decoration:none;display:flex;align-items:center;justify-content:center;gap:6px;font-family:'DM Sans',sans-serif;">
+        <i class="ti ti-logout"></i> Sign Out
+      </a>
+    </div>
+  </div>
+</div>
 
-document.addEventListener('click', function(e) {
-  const footer = document.querySelector('.sidebar-footer');
-  if (footer && !footer.contains(e.target)) {
-    document.getElementById('userMenu').classList.remove('open');
-    document.getElementById('userChevron').style.transform = 'rotate(0deg)';
-  }
+<script>
+// Close logout modal on backdrop click
+document.getElementById('logoutModal').addEventListener('click', function(e) {
+  if (e.target === this) this.classList.remove('show');
 });
 
 function showToast(message, type = 'success') {

@@ -1,0 +1,175 @@
+{% extends 'record_tracker/base.html' %}
+{% load static %}
+
+{% block title %}Semesters{% endblock %}
+{% block header_title %}Semesters{% endblock %}
+{% block header_subtitle %}Manage academic semesters{% endblock %}
+
+{% block header_actions %}
+<button class="btn btn-primary" onclick="document.getElementById('addModal').classList.add('show')">
+  <i class="ti ti-plus"></i> Add Semester
+</button>
+{% endblock %}
+
+{% block extra_css %}
+.sem-table { width:100%; border-collapse:collapse; }
+.sem-table th { font-size:11px; font-weight:600; color:var(--gray-400); text-transform:uppercase; letter-spacing:.5px; padding:12px 16px; text-align:left; border-bottom:1px solid var(--blue-50); }
+.sem-table td { padding:14px 16px; border-bottom:1px solid var(--blue-50); font-size:13px; }
+.sem-table tr:last-child td { border-bottom:none; }
+.sem-table tr:hover td { background:var(--blue-50); }
+.active-badge { display:inline-flex; align-items:center; gap:5px; padding:4px 10px; border-radius:20px; font-size:11px; font-weight:600; background:var(--teal-50); color:var(--teal-600); }
+.inactive-badge { display:inline-flex; align-items:center; gap:5px; padding:4px 10px; border-radius:20px; font-size:11px; font-weight:500; background:var(--blue-50); color:var(--gray-400); }
+.action-btns { display:flex; gap:6px; }
+.icon-btn-sm { width:30px; height:30px; border-radius:6px; display:flex; align-items:center; justify-content:center; cursor:pointer; font-size:15px; border:none; transition:all 0.15s; text-decoration:none; }
+.icon-btn-sm.edit { background:var(--blue-50); color:var(--blue-600); }
+.icon-btn-sm.edit:hover { background:var(--blue-100); }
+.icon-btn-sm.delete { background:var(--red-50); color:var(--red-600); }
+.icon-btn-sm.delete:hover { background:#fcd9d9; }
+{% endblock %}
+
+{% block content %}
+
+{% if active_semester %}
+<div style="background:linear-gradient(135deg,var(--teal-600),var(--teal-400));border-radius:12px;padding:16px 20px;margin-bottom:24px;display:flex;align-items:center;gap:12px;color:white;">
+  <i class="ti ti-school" style="font-size:24px;"></i>
+  <div>
+    <div style="font-weight:600;font-size:15px;">Active Semester: {{ active_semester.name }}</div>
+    <div style="font-size:12px;opacity:0.85;">{{ active_semester.start_date }} → {{ active_semester.end_date }}</div>
+  </div>
+</div>
+{% else %}
+<div style="background:var(--amber-50);border:1px solid #e8c97a;border-radius:12px;padding:16px 20px;margin-bottom:24px;display:flex;align-items:center;gap:12px;color:var(--amber-600);">
+  <i class="ti ti-alert-triangle" style="font-size:20px;"></i>
+  <div style="font-size:13px;font-weight:500;">No active semester set. Class schedules and late detection require an active semester.</div>
+</div>
+{% endif %}
+
+<div class="card">
+  <div class="card-header">
+    <div>
+      <div class="card-title">All Semesters</div>
+      <div class="card-subtitle">{{ semesters|length }} semester{{ semesters|length|pluralize }} registered</div>
+    </div>
+  </div>
+  <table class="sem-table">
+    <thead>
+      <tr><th>Semester</th><th>Start Date</th><th>End Date</th><th>Status</th><th>Actions</th></tr>
+    </thead>
+    <tbody>
+      {% for sem in semesters %}
+      <tr>
+        <td style="font-weight:500;">{{ sem.name }}</td>
+        <td style="font-family:'DM Mono',monospace;font-size:12px;">{{ sem.start_date }}</td>
+        <td style="font-family:'DM Mono',monospace;font-size:12px;">{{ sem.end_date }}</td>
+        <td>
+          {% if sem.is_active %}
+            <span class="active-badge"><i class="ti ti-check" style="font-size:11px;"></i> Active</span>
+          {% else %}
+            <span class="inactive-badge">Inactive</span>
+          {% endif %}
+        </td>
+        <td>
+          <div class="action-btns">
+            <button class="icon-btn-sm edit" title="Edit"
+              onclick="openEditModal({{ sem.id }}, '{{ sem.name|escapejs }}', '{{ sem.start_date }}', '{{ sem.end_date }}', {{ sem.is_active|yesno:'true,false' }})">
+              <i class="ti ti-edit"></i>
+            </button>
+            <form method="POST" action="{% url 'delete_semester' sem.id %}" style="display:inline;" onsubmit="return confirm('Delete {{ sem.name }}?')">
+              {% csrf_token %}
+              <button type="submit" class="icon-btn-sm delete" title="Delete">
+                <i class="ti ti-trash"></i>
+              </button>
+            </form>
+          </div>
+        </td>
+      </tr>
+      {% empty %}
+      <tr><td colspan="5"><div class="empty-state"><i class="ti ti-school-off"></i>No semesters yet. Add one to get started.</div></td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<!-- ADD MODAL -->
+<div class="modal-overlay" id="addModal">
+  <div class="modal">
+    <div class="modal-title"><i class="ti ti-school" style="color:var(--blue-600);"></i> Add Semester</div>
+    <form method="POST" action="{% url 'add_semester' %}">
+      {% csrf_token %}
+      <div class="form-group">
+        <label class="form-label">Semester Name *</label>
+        <input type="text" name="name" class="form-input" placeholder="e.g. 1st Semester 2026-2027" required />
+      </div>
+      <div class="form-grid-2">
+        <div class="form-group">
+          <label class="form-label">Start Date *</label>
+          <input type="date" name="start_date" class="form-input" required />
+        </div>
+        <div class="form-group">
+          <label class="form-label">End Date *</label>
+          <input type="date" name="end_date" class="form-input" required />
+        </div>
+      </div>
+      <div class="form-group" style="display:flex;align-items:center;gap:10px;">
+        <input type="checkbox" name="is_active" id="addActive" style="width:16px;height:16px;cursor:pointer;" />
+        <label for="addActive" style="font-size:13px;cursor:pointer;font-weight:500;">Set as Active Semester</label>
+      </div>
+      <span class="form-hint">Only one semester can be active at a time. Setting this active will deactivate others.</span>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-outline" onclick="document.getElementById('addModal').classList.remove('show')">Cancel</button>
+        <button type="submit" class="btn btn-primary"><i class="ti ti-check"></i> Save Semester</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- EDIT MODAL -->
+<div class="modal-overlay" id="editModal">
+  <div class="modal">
+    <div class="modal-title"><i class="ti ti-edit" style="color:var(--blue-600);"></i> Edit Semester</div>
+    <form method="POST" id="editForm">
+      {% csrf_token %}
+      <div class="form-group">
+        <label class="form-label">Semester Name *</label>
+        <input type="text" name="name" id="editName" class="form-input" required />
+      </div>
+      <div class="form-grid-2">
+        <div class="form-group">
+          <label class="form-label">Start Date *</label>
+          <input type="date" name="start_date" id="editStart" class="form-input" required />
+        </div>
+        <div class="form-group">
+          <label class="form-label">End Date *</label>
+          <input type="date" name="end_date" id="editEnd" class="form-input" required />
+        </div>
+      </div>
+      <div class="form-group" style="display:flex;align-items:center;gap:10px;">
+        <input type="checkbox" name="is_active" id="editActive" style="width:16px;height:16px;cursor:pointer;" />
+        <label for="editActive" style="font-size:13px;cursor:pointer;font-weight:500;">Set as Active Semester</label>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-outline" onclick="document.getElementById('editModal').classList.remove('show')">Cancel</button>
+        <button type="submit" class="btn btn-primary"><i class="ti ti-check"></i> Update Semester</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function openEditModal(id, name, start, end, isActive) {
+  document.getElementById('editForm').action = `/semesters/${id}/edit/`;
+  document.getElementById('editName').value  = name;
+  document.getElementById('editStart').value = start;
+  document.getElementById('editEnd').value   = end;
+  document.getElementById('editActive').checked = isActive;
+  document.getElementById('editModal').classList.add('show');
+}
+document.querySelectorAll('.modal-overlay').forEach(overlay => {
+  overlay.addEventListener('click', function(e) {
+    if (e.target === this) this.classList.remove('show');
+  });
+});
+</script>
+{% endblock %}

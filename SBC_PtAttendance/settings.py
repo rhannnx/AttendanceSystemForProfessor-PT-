@@ -10,7 +10,14 @@ environ.Env.read_env(os.path.join(BASE_DIR, '.env'))
 
 SECRET_KEY = env('SECRET_KEY')
 DEBUG = env('DEBUG')
-ALLOWED_HOSTS = env.list('ALLOWED_HOSTS', default=['127.0.0.1', 'localhost'])
+
+ALLOWED_HOSTS = env.list('ALLOWED_HOSTS', default=[
+    '127.0.0.1',
+    'localhost',
+    '192.168.1.12',
+    '192.168.137.1',
+    '192.168.1.28'  # ← add quotes ✅
+])
 
 INSTALLED_APPS = [
     'django.contrib.admin',

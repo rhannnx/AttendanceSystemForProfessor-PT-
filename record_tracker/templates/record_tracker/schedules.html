@@ -1,0 +1,317 @@
+{% extends 'record_tracker/base.html' %}
+{% load static %}
+
+{% block title %}Class Schedules{% endblock %}
+{% block header_title %}Class Schedules{% endblock %}
+{% block header_subtitle %}Manage professor class schedules per semester{% endblock %}
+
+{% block header_actions %}
+{% if active_semester %}
+<button class="btn btn-primary" onclick="document.getElementById('addModal').classList.add('show')">
+  <i class="ti ti-plus"></i> Add Schedule
+</button>
+{% endif %}
+<a href="{% url 'semesters' %}" class="btn btn-outline">
+  <i class="ti ti-school"></i> Manage Semesters
+</a>
+{% endblock %}
+
+{% block extra_css %}
+.filter-bar { display:flex; gap:10px; margin-bottom:20px; align-items:center; flex-wrap:wrap; }
+.filter-select { border:1px solid var(--blue-100); border-radius:8px; padding:7px 12px; font-size:13px; font-family:'DM Sans',sans-serif; color:var(--blue-900); background:white; outline:none; cursor:pointer; }
+
+.prof-block { margin-bottom:20px; }
+.prof-block-header { display:flex; align-items:center; gap:12px; padding:14px 20px; background:var(--blue-900); border-radius:12px 12px 0 0; }
+.prof-avatar { width:36px; height:36px; border-radius:50%; background:var(--blue-400); display:flex; align-items:center; justify-content:center; color:white; font-size:13px; font-weight:600; flex-shrink:0; }
+.prof-block-name { font-size:14px; font-weight:600; color:white; }
+.prof-block-dept { font-size:11px; color:var(--blue-200); }
+.prof-block-count { margin-left:auto; background:var(--blue-400); color:white; font-size:11px; font-weight:600; padding:3px 10px; border-radius:20px; }
+
+.sched-table { width:100%; border-collapse:collapse; background:white; border:1px solid var(--blue-100); border-top:none; border-radius:0 0 12px 12px; overflow:hidden; }
+.sched-table th { font-size:11px; font-weight:600; color:var(--gray-400); text-transform:uppercase; letter-spacing:.5px; padding:10px 16px; text-align:left; border-bottom:1px solid var(--blue-50); background:var(--blue-50); }
+.sched-table td { padding:12px 16px; border-bottom:1px solid var(--blue-50); font-size:13px; }
+.sched-table tr:last-child td { border-bottom:none; }
+.sched-table tr:hover td { background:var(--blue-50); }
+
+.day-pill { display:inline-flex; align-items:center; padding:2px 7px; border-radius:20px; font-size:10px; font-weight:600; background:var(--blue-50); color:var(--blue-600); margin:1px; }
+.subject-badge { font-family:'DM Mono',monospace; font-size:12px; background:var(--blue-50); color:var(--blue-600); padding:3px 8px; border-radius:6px; font-weight:500; }
+
+.action-btns { display:flex; gap:6px; }
+.icon-btn-sm { width:30px; height:30px; border-radius:6px; display:flex; align-items:center; justify-content:center; cursor:pointer; font-size:15px; border:none; transition:all 0.15s; }
+.icon-btn-sm.edit { background:var(--blue-50); color:var(--blue-600); }
+.icon-btn-sm.edit:hover { background:var(--blue-100); }
+.icon-btn-sm.delete { background:var(--red-50); color:var(--red-600); }
+.icon-btn-sm.delete:hover { background:#fcd9d9; }
+
+/* Day checkboxes in modal */
+.day-checkboxes { display:flex; gap:8px; flex-wrap:wrap; }
+.day-checkbox { display:none; }
+.day-label { display:inline-flex; align-items:center; justify-content:center; width:42px; height:42px; border-radius:8px; border:1.5px solid var(--blue-100); font-size:11px; font-weight:600; color:var(--gray-400); cursor:pointer; transition:all 0.15s; user-select:none; }
+.day-checkbox:checked + .day-label { background:var(--blue-600); color:white; border-color:var(--blue-600); }
+.day-label:hover { border-color:var(--blue-400); color:var(--blue-600); }
+{% endblock %}
+
+{% block content %}
+
+<!-- Active semester banner -->
+{% if active_semester %}
+<div style="background:var(--teal-50);border:1px solid var(--teal-400);border-radius:10px;padding:12px 16px;margin-bottom:20px;display:flex;align-items:center;gap:10px;font-size:13px;color:var(--teal-600);">
+  <i class="ti ti-calendar-check" style="font-size:18px;"></i>
+  <span>Showing schedules for <strong>{{ active_semester.name }}</strong></span>
+</div>
+{% else %}
+<div style="background:var(--amber-50);border:1px solid #e8c97a;border-radius:10px;padding:12px 16px;margin-bottom:20px;display:flex;align-items:center;gap:10px;font-size:13px;color:var(--amber-600);">
+  <i class="ti ti-alert-triangle" style="font-size:18px;"></i>
+  <span>No active semester. <a href="{% url 'semesters' %}" style="color:var(--blue-600);font-weight:600;">Set one up first →</a></span>
+</div>
+{% endif %}
+
+<!-- Filters -->
+<div class="filter-bar">
+  <form method="GET" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;">
+    <select name="professor_id" class="filter-select" onchange="this.form.submit()">
+      <option value="">All Professors</option>
+      {% for prof in professors %}
+      <option value="{{ prof.id }}" {% if selected_professor_id == prof.id|stringformat:"s" %}selected{% endif %}>
+        {{ prof.user.get_full_name }}
+      </option>
+      {% endfor %}
+    </select>
+    <select name="semester_id" class="filter-select" onchange="this.form.submit()">
+      <option value="">All Semesters</option>
+      {% for sem in semesters %}
+      <option value="{{ sem.id }}" {% if selected_semester_id == sem.id|stringformat:"s" %}selected{% endif %}>
+        {{ sem.name }}{% if sem.is_active %} (Active){% endif %}
+      </option>
+      {% endfor %}
+    </select>
+    <span style="font-size:12px;color:var(--gray-400);">{{ total_schedules }} schedule{{ total_schedules|pluralize }} found</span>
+  </form>
+</div>
+
+<!-- Schedules grouped by professor -->
+{% if grouped_schedules %}
+  {% for prof_name, data in grouped_schedules.items %}
+  <div class="prof-block">
+    <div class="prof-block-header">
+      <div class="prof-avatar">
+        {{ data.professor.user.first_name|slice:":1" }}{{ data.professor.user.last_name|slice:":1" }}
+      </div>
+      <div>
+        <div class="prof-block-name">{{ prof_name }}</div>
+        <div class="prof-block-dept">{{ data.professor.department }} · {{ data.professor.employee_id }}</div>
+      </div>
+      <span class="prof-block-count">{{ data.schedules|length }} class{{ data.schedules|length|pluralize:"es" }}</span>
+    </div>
+    <table class="sched-table">
+      <thead>
+        <tr><th>Subject</th><th>Classroom</th><th>Days</th><th>Start</th><th>End</th><th>Grace</th><th>Actions</th></tr>
+      </thead>
+      <tbody>
+        {% for sched in data.schedules %}
+        <tr>
+          <td>
+            <span class="subject-badge">{{ sched.subject_code }}</span>
+            {% if sched.subject_name %}<div style="font-size:11px;color:var(--gray-400);margin-top:3px;">{{ sched.subject_name }}</div>{% endif %}
+          </td>
+          <td style="color:var(--gray-400);">{{ sched.classroom }}</td>
+          <td>
+            {% for day in sched.get_days_list %}
+              <span class="day-pill">{{ day }}</span>
+            {% endfor %}
+          </td>
+          <td style="font-family:'DM Mono',monospace;font-size:12px;">{{ sched.start_time|time:"h:i A" }}</td>
+          <td style="font-family:'DM Mono',monospace;font-size:12px;">{{ sched.end_time|time:"h:i A" }}</td>
+          <td style="font-size:12px;color:var(--gray-400);">+{{ sched.grace_period }}min</td>
+          <td>
+            <div class="action-btns">
+              <button class="icon-btn-sm edit" title="Edit"
+                onclick="openEditModal(
+                  {{ sched.id }},
+                  '{{ sched.subject_code|escapejs }}',
+                  '{{ sched.subject_name|escapejs }}',
+                  '{{ sched.classroom|escapejs }}',
+                  '{{ sched.days }}',
+                  '{{ sched.start_time|time:"H:i" }}',
+                  '{{ sched.end_time|time:"H:i" }}'
+                )">
+                <i class="ti ti-edit"></i>
+              </button>
+              <form method="POST" action="{% url 'delete_schedule' sched.id %}" style="display:inline;" onsubmit="return confirm('Delete {{ sched.subject_code }} schedule?')">
+                {% csrf_token %}
+                <button type="submit" class="icon-btn-sm delete" title="Delete">
+                  <i class="ti ti-trash"></i>
+                </button>
+              </form>
+            </div>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endfor %}
+{% else %}
+<div class="card">
+  <div class="empty-state">
+    <i class="ti ti-calendar-off"></i>
+    No schedules found. {% if active_semester %}Add one using the button above.{% else %}Set up an active semester first.{% endif %}
+  </div>
+</div>
+{% endif %}
+
+<!-- ADD MODAL -->
+<div class="modal-overlay" id="addModal">
+  <div class="modal" style="width:540px;">
+    <div class="modal-title"><i class="ti ti-calendar-plus" style="color:var(--blue-600);"></i> Add Class Schedule</div>
+    <form method="POST" action="{% url 'add_schedule' %}">
+      {% csrf_token %}
+      <div class="section-divider">Professor & Semester</div>
+      <div class="form-grid-2">
+        <div class="form-group">
+          <label class="form-label">Professor *</label>
+          <select name="professor_id" class="form-select" required>
+            <option value="">Select professor...</option>
+            {% for prof in professors %}
+            <option value="{{ prof.id }}">{{ prof.user.get_full_name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Semester *</label>
+          <select name="semester_id" class="form-select" required>
+            <option value="">Select semester...</option>
+            {% for sem in semesters %}
+            <option value="{{ sem.id }}" {% if sem.is_active %}selected{% endif %}>
+              {{ sem.name }}{% if sem.is_active %} ✓{% endif %}
+            </option>
+            {% endfor %}
+          </select>
+        </div>
+      </div>
+      <div class="section-divider">Class Details</div>
+      <div class="form-grid-2">
+        <div class="form-group">
+          <label class="form-label">Subject Code *</label>
+          <input type="text" name="subject_code" class="form-input" placeholder="e.g. MATH101" required />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Subject Name</label>
+          <input type="text" name="subject_name" class="form-input" placeholder="e.g. College Algebra" />
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Classroom *</label>
+        <input type="text" name="classroom" class="form-input" placeholder="e.g. Room 302, Lab A" required />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Days *</label>
+        <div class="day-checkboxes">
+          {% for code, label in schedule_days %}
+          <input type="checkbox" name="days" value="{{ code }}" id="add_{{ code }}" class="day-checkbox" />
+          <label for="add_{{ code }}" class="day-label">{{ code|slice:":3" }}</label>
+          {% endfor %}
+        </div>
+        <span class="form-hint">Select all days this class meets.</span>
+      </div>
+      <div class="form-grid-2">
+        <div class="form-group">
+          <label class="form-label">Start Time *</label>
+          <input type="time" name="start_time" class="form-input" required />
+        </div>
+        <div class="form-group">
+          <label class="form-label">End Time *</label>
+          <input type="time" name="end_time" class="form-input" required />
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-outline" onclick="document.getElementById('addModal').classList.remove('show')">Cancel</button>
+        <button type="submit" class="btn btn-primary"><i class="ti ti-check"></i> Save Schedule</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- EDIT MODAL -->
+<div class="modal-overlay" id="editModal">
+  <div class="modal" style="width:540px;">
+    <div class="modal-title"><i class="ti ti-edit" style="color:var(--blue-600);"></i> Edit Schedule</div>
+    <form method="POST" id="editForm">
+      {% csrf_token %}
+      <div class="form-grid-2">
+        <div class="form-group">
+          <label class="form-label">Subject Code *</label>
+          <input type="text" name="subject_code" id="editCode" class="form-input" required />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Subject Name</label>
+          <input type="text" name="subject_name" id="editName" class="form-input" />
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Classroom *</label>
+        <input type="text" name="classroom" id="editClassroom" class="form-input" required />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Days *</label>
+        <div class="day-checkboxes">
+          {% for code, label in schedule_days %}
+          <input type="checkbox" name="days" value="{{ code }}" id="edit_{{ code }}" class="day-checkbox" />
+          <label for="edit_{{ code }}" class="day-label">{{ code|slice:":3" }}</label>
+          {% endfor %}
+        </div>
+      </div>
+      <div class="form-grid-2">
+        <div class="form-group">
+          <label class="form-label">Start Time *</label>
+          <input type="time" name="start_time" id="editStart" class="form-input" required />
+        </div>
+        <div class="form-group">
+          <label class="form-label">End Time *</label>
+          <input type="time" name="end_time" id="editEnd" class="form-input" required />
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-outline" onclick="document.getElementById('editModal').classList.remove('show')">Cancel</button>
+        <button type="submit" class="btn btn-primary"><i class="ti ti-check"></i> Update Schedule</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const ALL_DAYS = ['MON','TUE','WED','THU','FRI','SAT'];
+
+function openEditModal(id, code, name, classroom, days, start, end) {
+  document.getElementById('editForm').action = `/schedules/${id}/edit/`;
+  document.getElementById('editCode').value      = code;
+  document.getElementById('editName').value      = name;
+  document.getElementById('editClassroom').value = classroom;
+  document.getElementById('editStart').value     = start;
+  document.getElementById('editEnd').value       = end;
+
+  // Reset all day checkboxes
+  ALL_DAYS.forEach(d => {
+    const cb = document.getElementById(`edit_${d}`);
+    if (cb) cb.checked = false;
+  });
+
+  // Check the correct days
+  const selectedDays = days.split(',').map(d => d.trim());
+  selectedDays.forEach(d => {
+    const cb = document.getElementById(`edit_${d}`);
+    if (cb) cb.checked = true;
+  });
+
+  document.getElementById('editModal').classList.add('show');
+}
+
+document.querySelectorAll('.modal-overlay').forEach(overlay => {
+  overlay.addEventListener('click', function(e) {
+    if (e.target === this) this.classList.remove('show');
+  });
+});
+</script>
+{% endblock %}
