@@ -1,0 +1,80 @@
+{% extends 'record_tracker/base.html' %}
+{% load static %}
+
+{% block title %}Edit Attendance{% endblock %}
+{% block header_title %}Edit Attendance{% endblock %}
+{% block header_subtitle %}Correct a professor's recorded time-in or time-out{% endblock %}
+
+{% block header_actions %}
+<a href="{% url 'attendance' %}?date={{ day.date|date:'Y-m-d' }}" class="btn btn-outline">
+  <i class="ti ti-arrow-left"></i> Back to Attendance
+</a>
+{% endblock %}
+
+{% block extra_css %}
+.attendance-info { display:flex; align-items:center; gap:14px; padding:18px 20px; background:var(--blue-50); border:1px solid var(--blue-100); border-radius:12px; margin-bottom:22px; }
+.attendance-avatar { width:46px; height:46px; border-radius:50%; background:var(--blue-600); color:white; display:flex; align-items:center; justify-content:center; font-size:15px; font-weight:600; flex-shrink:0; }
+.attendance-name { font-size:14px; font-weight:600; color:var(--blue-900); }
+.attendance-meta { font-size:12px; color:var(--gray-400); margin-top:3px; }
+.error-banner { background:var(--red-50); border:1px solid var(--red-400); color:var(--red-600); border-radius:8px; padding:10px 14px; font-size:12px; margin-bottom:18px; display:flex; align-items:center; gap:8px; }
+textarea.form-input { resize:vertical; min-height:88px; }
+.edit-note { font-size:12px; color:var(--gray-400); line-height:1.6; background:var(--blue-50); border-radius:8px; padding:12px 14px; margin-top:18px; }
+{% endblock %}
+
+{% block content %}
+<div class="card" style="max-width:640px;">
+  <div class="card-header">
+    <div>
+      <div class="card-title">Attendance Record</div>
+      <div class="card-subtitle">{{ day.date|date:"F d, Y" }}</div>
+    </div>
+  </div>
+  <div class="card-body">
+    <div class="attendance-info">
+      <div class="attendance-avatar">{{ day.professor.user.first_name|slice:":1" }}{{ day.professor.user.last_name|slice:":1" }}</div>
+      <div>
+        <div class="attendance-name">{{ day.professor.user.get_full_name }}</div>
+        <div class="attendance-meta">{{ day.professor.employee_id }} · {{ day.professor.department }}</div>
+      </div>
+    </div>
+
+    {% if error %}
+    <div class="error-banner">
+      <i class="ti ti-alert-circle"></i>
+      {{ error }}
+    </div>
+    {% endif %}
+
+    <form method="POST">
+      {% csrf_token %}
+      <div class="form-grid-2">
+        <div class="form-group">
+          <label class="form-label">Time In *</label>
+          <input type="time" name="time_in" class="form-input" value="{{ day.time_in|time:'H:i' }}" required />
+        </div>
+        <div class="form-group">
+          <label class="form-label">Time Out</label>
+          <input type="time" name="time_out" class="form-input" value="{{ day.time_out|time:'H:i' }}" />
+          <span class="form-hint">Leave blank if the professor has not timed out.</span>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Reason for Edit *</label>
+        <textarea name="reason" class="form-input" placeholder="e.g. QR scan failed, corrected time based on CCTV review" required></textarea>
+        <span class="form-hint">This reason is stored in the audit trail with the old and new values.</span>
+      </div>
+
+      <div class="modal-actions">
+        <a href="{% url 'attendance' %}?date={{ day.date|date:'Y-m-d' }}" class="btn btn-outline">Cancel</a>
+        <button type="submit" class="btn btn-primary"><i class="ti ti-check"></i> Save Changes</button>
+      </div>
+    </form>
+
+    <div class="edit-note">
+      <strong>Audit notice:</strong> Every attendance correction is logged with the HR user, timestamp, IP address,
+      old values, new values, and the reason provided above. Session lateness is recalculated automatically.
+    </div>
+  </div>
+</div>
+{% endblock %}

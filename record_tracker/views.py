@@ -9,10 +9,16 @@ from django.http import JsonResponse, HttpResponse
 from django.contrib.auth.models import User
 from django.core.files.base import ContentFile
 from django.core.cache import cache
-from .models import Professor, AttendanceDay, AttendanceSession, Semester, ClassSchedule
+from django.core.paginator import Paginator
+from django.db.models import Q
+from django.urls import reverse
+from .models import Professor, AttendanceDay, AttendanceSession, Semester, ClassSchedule, AuditLog
 from .serializers import ProfessorSerializer, AttendanceDaySerializer, AttendanceSessionSerializer
-from .utils import send_hr_notification, send_hr_email, is_on_school_network
+from .utils import send_hr_notification, send_hr_email, is_on_school_network, get_client_ip
+from .decorators import hr_required, professor_required
+from .permissions import IsHROrReadOnly, IsHROnly, IsProfessorOrHR
 import datetime
+import logging
 import qrcode
 import io
 from reportlab.pdfgen import canvas
@@ -20,29 +26,28 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib import colors
 from reportlab.lib.units import mm
 from django.contrib.auth import authenticate, login, logout
+from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
+from django.conf import settings
+
+logger = logging.getLogger(__name__)
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def custom_logout(request):
+    if request.user.is_authenticated:
+        log_audit(request, 'OTHER', request.user, reason='User logged out')
     logout(request)
     return redirect('login')
 
 
 def check_ip(request):
-    x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
-    if x_forwarded_for:
-        ip = x_forwarded_for.split(',')[0].strip()
-    else:
-        ip = request.META.get('REMOTE_ADDR', '')
-    return JsonResponse({'your_ip': ip})
-
-
-def get_client_ip(request):
-    x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
-    if x_forwarded_for:
-        return x_forwarded_for.split(',')[0].strip()
-    return request.META.get('REMOTE_ADDR')
+    ip = get_client_ip(request)
+    return JsonResponse({
+        'your_ip': ip,
+        'on_school_network': is_on_school_network(request),
+        'wifi_bypass': bool(getattr(settings, 'WIFI_BYPASS', False)),
+    })
 
 
 def format_duration(td):
@@ -64,10 +69,96 @@ def is_rate_limited(key, max_requests=5, timeout=60):
     return False
 
 
+# ── Audit helpers ─────────────────────────────────────────────────────────────
+
+def log_audit(request, action, obj, old_values=None, new_values=None, reason=''):
+    try:
+        AuditLog.objects.create(
+            user=request.user if request and getattr(request.user, 'is_authenticated', False) else None,
+            action=action,
+            model_name=obj.__class__.__name__,
+            object_id=str(getattr(obj, 'pk', '')),
+            object_repr=str(obj),
+            old_values=old_values,
+            new_values=new_values,
+            reason=reason or '',
+            ip_address=get_client_ip(request) if request else None,
+        )
+    except Exception:
+        logger.exception('Failed to write audit log for %s', obj)
+
+
+def _attendance_snapshot(day):
+    return {
+        'date': day.date.isoformat() if day.date else None,
+        'time_in': timezone.localtime(day.time_in).isoformat() if day.time_in else None,
+        'time_out': timezone.localtime(day.time_out).isoformat() if day.time_out else None,
+        'ip_address': day.ip_address or '',
+    }
+
+
+def _professor_snapshot(professor):
+    return {
+        'first_name': professor.user.first_name,
+        'last_name': professor.user.last_name,
+        'email': professor.user.email,
+        'employee_id': professor.employee_id,
+        'phone_number': professor.phone_number,
+        'department': professor.department,
+        'expected_time_in': professor.expected_time_in.strftime('%H:%M') if professor.expected_time_in else None,
+    }
+
+
+def _semester_snapshot(semester):
+    return {
+        'name': semester.name,
+        'start_date': semester.start_date.isoformat() if semester.start_date else None,
+        'end_date': semester.end_date.isoformat() if semester.end_date else None,
+        'is_active': semester.is_active,
+    }
+
+
+def _schedule_snapshot(schedule):
+    return {
+        'professor': str(schedule.professor),
+        'semester': str(schedule.semester),
+        'subject_code': schedule.subject_code,
+        'subject_name': schedule.subject_name,
+        'classroom': schedule.classroom,
+        'days': schedule.days,
+        'start_time': schedule.start_time.strftime('%H:%M') if schedule.start_time else None,
+        'end_time': schedule.end_time.strftime('%H:%M') if schedule.end_time else None,
+        'grace_period': schedule.grace_period,
+    }
+
+
+def _parse_day_time(value, day):
+    if not value:
+        return None
+    try:
+        parsed = datetime.time.fromisoformat(value)
+    except (TypeError, ValueError):
+        return None
+    dt = datetime.datetime.combine(day.date, parsed)
+    if timezone.is_naive(dt):
+        dt = timezone.make_aware(dt, timezone.get_current_timezone())
+    return dt
+
+
+def _recalculate_session_lateness(day):
+    for session in day.sessions.filter(schedule__isnull=False).select_related('schedule'):
+        is_late, minutes_late = session.schedule.check_lateness(day.time_in)
+        if session.is_late_flag != is_late or session.minutes_late != minutes_late:
+            session.is_late_flag = is_late
+            session.minutes_late = minutes_late
+            session.save(update_fields=['is_late_flag', 'minutes_late'])
+
+
 def _generate_qr_for_professor(professor, request):
     """QR points to public /timein/ page — handles both time-in AND time-out."""
+    token = generate_qr_token(professor.id)
     scan_url = request.build_absolute_uri(
-        f'/timein/?professor_id={professor.id}'
+        f'/timein/?token={token}'
     )
     qr = qrcode.QRCode(
         version=1,
@@ -82,7 +173,15 @@ def _generate_qr_for_professor(professor, request):
     img.save(buffer, format='PNG')
     buffer.seek(0)
     filename = f"qr_professor_{professor.id}_{professor.employee_id}.png"
+    old_qr = professor.qr_code.name if professor.qr_code else ''
+    if old_qr:
+        professor.qr_code.storage.delete(old_qr)
     professor.qr_code.save(filename, ContentFile(buffer.read()), save=True)
+    log_audit(
+        request, 'QR_GENERATE', professor,
+        old_values={'qr_code': old_qr} if old_qr else None,
+        new_values={'qr_code': professor.qr_code.name},
+    )
 
 
 def _auto_create_sessions(day_record):
@@ -128,12 +227,19 @@ def public_time_in(request):
     → Timed in, not out     → TIME OUT (auto)
     → Already timed out     → Show "Completed" message
     """
-    professor_id = request.GET.get('professor_id')
+    token = request.GET.get('token')
+    professor_id, token_date = verify_qr_token(token) if token else (None, None)
 
-    if not professor_id:
+    if not professor_id or not token_date:
         return render(request, 'record_tracker/timein_result.html', {
             'status': 'error',
-            'error_message': 'Invalid QR code. Professor ID missing.',
+            'error_message': 'Invalid QR code. Please scan today\'s QR code.',
+        })
+
+    if token_date != timezone.localdate().isoformat():
+        return render(request, 'record_tracker/timein_result.html', {
+            'status': 'error',
+            'error_message': 'This QR code has expired. Please use today\'s QR code.',
         })
 
     ip = get_client_ip(request)
@@ -175,6 +281,7 @@ def public_time_in(request):
         )
         _auto_create_sessions(day)
         day.refresh_from_db()
+        log_audit(request, 'TIMEIN', day, new_values=_attendance_snapshot(day))
 
         late_info = f" (Late by {day.minutes_late} min(s))" if day.is_late else ""
         send_hr_notification(prof_name, f"Timed In (Arrived at Campus){late_info}")
@@ -217,8 +324,10 @@ def public_time_in(request):
 
     # ── CASE 2: Timed in but NOT timed out → TIME OUT ────────────────────────
     elif not existing.is_timed_out:
+        old_snapshot = _attendance_snapshot(existing)
         existing.time_out = timezone.now()
         existing.save()
+        log_audit(request, 'TIMEOUT', existing, old_values=old_snapshot, new_values=_attendance_snapshot(existing))
 
         send_hr_notification(prof_name, "Timed Out (Left Campus)")
         send_hr_email(prof_name, "Timed Out (Left Campus)", request)
@@ -248,12 +357,18 @@ def public_time_in(request):
 
 
 def public_time_out(request):
-    """Legacy direct time-out URL — still works as fallback."""
-    professor_id = request.GET.get('professor_id')
-    if not professor_id:
+    """Direct time-out URL. Requires a valid signed QR token."""
+    token = request.GET.get('token')
+    professor_id, token_date = verify_qr_token(token) if token else (None, None)
+    if not professor_id or not token_date:
         return render(request, 'record_tracker/timeout_result.html', {
             'status': 'error',
-            'error_message': 'Invalid QR code.',
+            'error_message': 'Invalid QR code. Please scan today\'s QR code.',
+        })
+    if token_date != timezone.localdate().isoformat():
+        return render(request, 'record_tracker/timeout_result.html', {
+            'status': 'error',
+            'error_message': 'This QR code has expired. Please use today\'s QR code.',
         })
 
     ip = get_client_ip(request)
@@ -295,8 +410,10 @@ def public_time_out(request):
             'date': today.strftime('%B %d, %Y'),
         })
 
+    old_snapshot = _attendance_snapshot(day)
     day.time_out = timezone.now()
     day.save()
+    log_audit(request, 'TIMEOUT', day, old_values=old_snapshot, new_values=_attendance_snapshot(day))
     prof_name = professor.user.get_full_name()
     send_hr_notification(prof_name, "Timed Out (Left Campus)")
     send_hr_email(prof_name, "Timed Out (Left Campus)", request)
@@ -325,6 +442,7 @@ def custom_login(request):
         user = authenticate(request, username=username, password=password)
         if user is not None:
             login(request, user)
+            log_audit(request, 'LOGIN', user, reason='Successful login')
             if Professor.objects.filter(user=user).exists():
                 return redirect('professor_dashboard')
             return redirect('dashboard')
@@ -335,7 +453,7 @@ def custom_login(request):
 
 # ── HR Views ──────────────────────────────────────────────────────────────────
 
-@login_required
+@hr_required
 def hr_dashboard(request):
     today = timezone.localdate()
     total_professors = Professor.objects.count()
@@ -374,7 +492,7 @@ def hr_dashboard(request):
     return render(request, 'record_tracker/dashboard.html', context)
 
 
-@login_required
+@hr_required
 def professors_view(request):
     today = timezone.localdate()
     professors = Professor.objects.select_related('user').all()
@@ -387,7 +505,7 @@ def professors_view(request):
     return render(request, 'record_tracker/professors.html', context)
 
 
-@login_required
+@hr_required
 def attendance_view(request):
     date_str = request.GET.get('date', '')
     try:
@@ -421,7 +539,7 @@ def attendance_view(request):
     return render(request, 'record_tracker/attendance.html', context)
 
 
-@login_required
+@hr_required
 def sessions_view(request):
     today = timezone.localdate()
     sessions_qs = AttendanceSession.objects.filter(
@@ -467,7 +585,7 @@ def sessions_view(request):
     return render(request, 'record_tracker/sessions.html', context)
 
 
-@login_required
+@hr_required
 def analytics_view(request):
     today = timezone.localdate()
     total_professors = Professor.objects.count()
@@ -500,7 +618,7 @@ def analytics_view(request):
     return render(request, 'record_tracker/analytics.html', context)
 
 
-@login_required
+@hr_required
 def add_professor(request):
     if request.method == 'POST':
         user = User.objects.create_user(
@@ -510,21 +628,23 @@ def add_professor(request):
             last_name=request.POST.get('last_name'),
             email=request.POST.get('email'),
         )
-        Professor.objects.create(
+        professor = Professor.objects.create(
             user=user,
             employee_id=request.POST.get('employee_id'),
             phone_number=request.POST.get('phone_number'),
             department=request.POST.get('department'),
             expected_time_in=request.POST.get('expected_time_in') or None,
         )
+        log_audit(request, 'CREATE', professor, new_values=_professor_snapshot(professor))
         return redirect('professors')
     return redirect('professors')
 
 
-@login_required
+@hr_required
 def edit_professor(request, professor_id):
     professor = get_object_or_404(Professor, id=professor_id)
     if request.method == 'POST':
+        old_values = _professor_snapshot(professor)
         professor.user.first_name = request.POST.get('first_name', '').strip()
         professor.user.last_name  = request.POST.get('last_name', '').strip()
         professor.user.email      = request.POST.get('email', '').strip()
@@ -537,18 +657,25 @@ def edit_professor(request, professor_id):
         professor.department       = request.POST.get('department', '').strip()
         professor.expected_time_in = request.POST.get('expected_time_in') or None
         professor.save()
+        new_values = _professor_snapshot(professor)
+        if new_values != old_values:
+            log_audit(request, 'UPDATE', professor, old_values=old_values, new_values=new_values)
+        if new_password:
+            log_audit(request, 'UPDATE', professor, reason='Password reset by HR')
     return redirect('professors')
 
 
-@login_required
+@hr_required
 def delete_professor(request, professor_id):
     professor = get_object_or_404(Professor, id=professor_id)
     if request.method == 'POST':
+        old_values = _professor_snapshot(professor)
+        log_audit(request, 'DELETE', professor, old_values=old_values, reason='Professor deleted by HR')
         professor.user.delete()
     return redirect('professors')
 
 
-@login_required
+@hr_required
 def notifications_view(request):
     today = timezone.localdate()
     today_records = AttendanceDay.objects.filter(date=today).select_related('professor__user').order_by('-time_in')
@@ -581,7 +708,7 @@ def notifications_view(request):
     return render(request, 'record_tracker/notifications.html', context)
 
 
-@login_required
+@hr_required
 def reports_view(request):
     today = timezone.localdate()
     professors = Professor.objects.select_related('user').all()
@@ -594,9 +721,54 @@ def reports_view(request):
     return render(request, 'record_tracker/reports.html', context)
 
 
+@hr_required
+def audit_logs_view(request):
+    logs = AuditLog.objects.select_related('user').all()
+    action = request.GET.get('action', '').strip()
+    query = request.GET.get('q', '').strip()
+    date_from_str = request.GET.get('date_from', '').strip()
+    date_to_str = request.GET.get('date_to', '').strip()
+
+    if action:
+        logs = logs.filter(action=action)
+    if query:
+        logs = logs.filter(
+            Q(model_name__icontains=query)
+            | Q(object_repr__icontains=query)
+            | Q(reason__icontains=query)
+            | Q(user__username__icontains=query)
+            | Q(user__first_name__icontains=query)
+            | Q(user__last_name__icontains=query)
+        )
+    if date_from_str:
+        try:
+            logs = logs.filter(timestamp__date__gte=datetime.date.fromisoformat(date_from_str))
+        except ValueError:
+            pass
+    if date_to_str:
+        try:
+            logs = logs.filter(timestamp__date__lte=datetime.date.fromisoformat(date_to_str))
+        except ValueError:
+            pass
+
+    paginator = Paginator(logs, 50)
+    page_obj = paginator.get_page(request.GET.get('page'))
+    context = {
+        'page_obj': page_obj,
+        'logs': page_obj.object_list,
+        'actions': AuditLog.ACTION_CHOICES,
+        'selected_action': action,
+        'query': query,
+        'date_from': date_from_str,
+        'date_to': date_to_str,
+        'total_logs': paginator.count,
+    }
+    return render(request, 'record_tracker/audit_logs.html', context)
+
+
 # ── Semester Views ────────────────────────────────────────────────────────────
 
-@login_required
+@hr_required
 def semesters_view(request):
     semesters = Semester.objects.all().order_by('-start_date')
     active    = Semester.get_active()
@@ -604,41 +776,47 @@ def semesters_view(request):
     return render(request, 'record_tracker/semesters.html', context)
 
 
-@login_required
+@hr_required
 def add_semester(request):
     if request.method == 'POST':
-        Semester.objects.create(
+        semester = Semester.objects.create(
             name=request.POST.get('name', '').strip(),
             start_date=request.POST.get('start_date'),
             end_date=request.POST.get('end_date'),
             is_active=request.POST.get('is_active') == 'on',
         )
+        log_audit(request, 'CREATE', semester, new_values=_semester_snapshot(semester))
     return redirect('semesters')
 
 
-@login_required
+@hr_required
 def edit_semester(request, semester_id):
     semester = get_object_or_404(Semester, id=semester_id)
     if request.method == 'POST':
+        old_values = _semester_snapshot(semester)
         semester.name       = request.POST.get('name', '').strip()
         semester.start_date = request.POST.get('start_date')
         semester.end_date   = request.POST.get('end_date')
         semester.is_active  = request.POST.get('is_active') == 'on'
         semester.save()
+        new_values = _semester_snapshot(semester)
+        if new_values != old_values:
+            log_audit(request, 'UPDATE', semester, old_values=old_values, new_values=new_values)
     return redirect('semesters')
 
 
-@login_required
+@hr_required
 def delete_semester(request, semester_id):
     semester = get_object_or_404(Semester, id=semester_id)
     if request.method == 'POST':
+        log_audit(request, 'DELETE', semester, old_values=_semester_snapshot(semester), reason='Semester deleted by HR')
         semester.delete()
     return redirect('semesters')
 
 
 # ── Schedule Views ────────────────────────────────────────────────────────────
 
-@login_required
+@hr_required
 def schedules_view(request):
     professors      = Professor.objects.select_related('user').all()
     semesters       = Semester.objects.all().order_by('-start_date')
@@ -671,13 +849,13 @@ def schedules_view(request):
     return render(request, 'record_tracker/schedules.html', context)
 
 
-@login_required
+@hr_required
 def add_schedule(request):
     if request.method == 'POST':
         professor = get_object_or_404(Professor, id=request.POST.get('professor_id'))
         semester  = get_object_or_404(Semester, id=request.POST.get('semester_id'))
         days_list = request.POST.getlist('days')
-        ClassSchedule.objects.create(
+        schedule = ClassSchedule.objects.create(
             professor=professor,
             semester=semester,
             subject_code=request.POST.get('subject_code', '').strip().upper(),
@@ -688,13 +866,15 @@ def add_schedule(request):
             end_time=request.POST.get('end_time'),
             grace_period=15,
         )
+        log_audit(request, 'CREATE', schedule, new_values=_schedule_snapshot(schedule))
     return redirect('schedules')
 
 
-@login_required
+@hr_required
 def edit_schedule(request, schedule_id):
     schedule = get_object_or_404(ClassSchedule, id=schedule_id)
     if request.method == 'POST':
+        old_values = _schedule_snapshot(schedule)
         days_list = request.POST.getlist('days')
         schedule.subject_code = request.POST.get('subject_code', '').strip().upper()
         schedule.subject_name = request.POST.get('subject_name', '').strip()
@@ -703,13 +883,17 @@ def edit_schedule(request, schedule_id):
         schedule.start_time   = request.POST.get('start_time')
         schedule.end_time     = request.POST.get('end_time')
         schedule.save()
+        new_values = _schedule_snapshot(schedule)
+        if new_values != old_values:
+            log_audit(request, 'UPDATE', schedule, old_values=old_values, new_values=new_values)
     return redirect('schedules')
 
 
-@login_required
+@hr_required
 def delete_schedule(request, schedule_id):
     schedule = get_object_or_404(ClassSchedule, id=schedule_id)
     if request.method == 'POST':
+        log_audit(request, 'DELETE', schedule, old_values=_schedule_snapshot(schedule), reason='Class schedule deleted by HR')
         schedule.delete()
     return redirect('schedules')
 
@@ -816,7 +1000,7 @@ def _build_pdf(response, title, subtitle, records_by_professor):
     p.save()
 
 
-@login_required
+@hr_required
 def generate_pdf(request, professor_id):
     professor = get_object_or_404(Professor, id=professor_id)
     records   = AttendanceDay.objects.filter(professor=professor).select_related('professor__user').prefetch_related('sessions').order_by('-date')
@@ -826,7 +1010,7 @@ def generate_pdf(request, professor_id):
     return response
 
 
-@login_required
+@hr_required
 def generate_pdf_all(request):
     professors = Professor.objects.select_related('user').all()
     response   = HttpResponse(content_type='application/pdf')
@@ -836,7 +1020,7 @@ def generate_pdf_all(request):
     return response
 
 
-@login_required
+@hr_required
 def generate_pdf_range(request):
     date_from_str = request.GET.get('date_from', str(timezone.localdate()))
     date_to_str   = request.GET.get('date_to', str(timezone.localdate()))
@@ -855,13 +1039,13 @@ def generate_pdf_range(request):
     return response
 
 
-@login_required
+@hr_required
 def qr_codes_view(request):
     professors = Professor.objects.select_related('user').all()
     return render(request, 'record_tracker/qr_codes.html', {'professors': professors})
 
 
-@login_required
+@hr_required
 def generate_qr(request, professor_id):
     professor = get_object_or_404(Professor, id=professor_id)
     _generate_qr_for_professor(professor, request)
@@ -870,7 +1054,7 @@ def generate_qr(request, professor_id):
     return redirect('qr_codes')
 
 
-@login_required
+@hr_required
 def generate_all_qr(request):
     for professor in Professor.objects.all():
         _generate_qr_for_professor(professor, request)
@@ -1023,6 +1207,7 @@ def professor_profile(request):
             request.user.save()
             from django.contrib.auth import update_session_auth_hash
             update_session_auth_hash(request, request.user)
+            log_audit(request, 'OTHER', professor, reason='Professor changed their password')
             password_changed = True
     context = {'professor': professor, 'password_changed': password_changed, 'password_error': password_error}
     return render(request, 'professor/profile.html', context)
@@ -1031,15 +1216,35 @@ def professor_profile(request):
 # ── API ViewSets ──────────────────────────────────────────────────────────────
 
 class ProfessorViewSet(viewsets.ModelViewSet):
-    queryset         = Professor.objects.all()
+    queryset = Professor.objects.all()
     serializer_class = ProfessorSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsHROrReadOnly]
+
+    def get_queryset(self):
+        user = self.request.user
+        if not user or not user.is_authenticated:
+            return Professor.objects.none()
+        if hasattr(user, "professor"):
+            return Professor.objects.filter(user=user)
+        return Professor.objects.all()
 
 
 class AttendanceDayViewSet(viewsets.ModelViewSet):
-    queryset         = AttendanceDay.objects.all()
+    queryset = AttendanceDay.objects.all()
     serializer_class = AttendanceDaySerializer
-    permission_classes = [IsAuthenticated]
+
+    def get_permissions(self):
+        if self.action in {'quick_time_in', 'quick_time_out'}:
+            return [IsProfessorOrHR()]
+        return [IsHROrReadOnly()]
+
+    def get_queryset(self):
+        user = self.request.user
+        if not user or not user.is_authenticated:
+            return AttendanceDay.objects.none()
+        if hasattr(user, "professor"):
+            return AttendanceDay.objects.filter(professor=user.professor)
+        return AttendanceDay.objects.all()
 
     @action(detail=False, methods=['post'])
     def quick_time_in(self, request):
@@ -1048,37 +1253,43 @@ class AttendanceDayViewSet(viewsets.ModelViewSet):
             return Response({'error': 'Too many time-in attempts. Wait 1 minute.', 'retry_after': '60 seconds'}, status=status.HTTP_429_TOO_MANY_REQUESTS)
         if not is_on_school_network(request):
             return Response({'error': 'You must be connected to the school WiFi to time in.'}, status=status.HTTP_403_FORBIDDEN)
-        professor_id = request.data.get('professor_id')
-        if not professor_id:
-            return Response({'error': 'professor_id is required.'}, status=status.HTTP_400_BAD_REQUEST)
-        try:
-            professor  = Professor.objects.get(id=professor_id)
-            ip_address = get_client_ip(request)
-            day, created = AttendanceDay.objects.get_or_create(
-                professor=professor,
-                date=timezone.localdate(),
-                defaults={'ip_address': ip_address}
-            )
-            if created:
-                _auto_create_sessions(day)
-                day.refresh_from_db()
-                prof_name  = professor.user.get_full_name()
-                late_info  = f" (Late by {day.minutes_late} min(s))" if day.is_late else ""
-                sms_sent   = send_hr_notification(prof_name, f"Timed In (Arrived at Campus){late_info}")
-                email_sent = send_hr_email(prof_name, f"Timed In (Arrived at Campus){late_info}", request)
-                return Response({
-                    'status': 'Time-in recorded.',
-                    'is_late': day.is_late,
-                    'minutes_late': day.minutes_late,
-                    'sessions_created': day.sessions.count(),
-                    'sms_status': 'HR notified' if sms_sent else 'SMS failed',
-                    'email_status': 'HR emailed' if email_sent else 'Email failed',
-                    'data': self.get_serializer(day).data
-                }, status=status.HTTP_201_CREATED)
-            else:
-                return Response({'status': 'Already timed in today.', 'data': self.get_serializer(day).data}, status=status.HTTP_200_OK)
-        except Professor.DoesNotExist:
-            return Response({'error': 'Professor not found.'}, status=status.HTTP_404_NOT_FOUND)
+        requested_professor_id = request.data.get('professor_id')
+        user_professor = getattr(request.user, 'professor', None)
+        if user_professor is not None:
+            if requested_professor_id and str(requested_professor_id) != str(user_professor.id):
+                return Response({'error': 'You can only time in for yourself.'}, status=status.HTTP_403_FORBIDDEN)
+            professor = user_professor
+        else:
+            if not requested_professor_id:
+                return Response({'error': 'professor_id is required.'}, status=status.HTTP_400_BAD_REQUEST)
+            try:
+                professor = Professor.objects.get(id=requested_professor_id)
+            except (Professor.DoesNotExist, ValueError, TypeError):
+                return Response({'error': 'Professor not found.'}, status=status.HTTP_404_NOT_FOUND)
+        ip_address = get_client_ip(request)
+        day, created = AttendanceDay.objects.get_or_create(
+            professor=professor,
+            date=timezone.localdate(),
+            defaults={'ip_address': ip_address}
+        )
+        if created:
+            _auto_create_sessions(day)
+            day.refresh_from_db()
+            log_audit(request, 'TIMEIN', day, new_values=_attendance_snapshot(day))
+            prof_name  = professor.user.get_full_name()
+            late_info  = f" (Late by {day.minutes_late} min(s))" if day.is_late else ""
+            sms_sent   = send_hr_notification(prof_name, f"Timed In (Arrived at Campus){late_info}")
+            email_sent = send_hr_email(prof_name, f"Timed In (Arrived at Campus){late_info}", request)
+            return Response({
+                'status': 'Time-in recorded.',
+                'is_late': day.is_late,
+                'minutes_late': day.minutes_late,
+                'sessions_created': day.sessions.count(),
+                'sms_status': 'HR notified' if sms_sent else 'SMS failed',
+                'email_status': 'HR emailed' if email_sent else 'Email failed',
+                'data': self.get_serializer(day).data
+            }, status=status.HTTP_201_CREATED)
+        return Response({'status': 'Already timed in today.', 'data': self.get_serializer(day).data}, status=status.HTTP_200_OK)
 
     @action(detail=False, methods=['post'])
     def quick_time_out(self, request):
@@ -1087,30 +1298,51 @@ class AttendanceDayViewSet(viewsets.ModelViewSet):
             return Response({'error': 'Too many time-out attempts. Wait 1 minute.', 'retry_after': '60 seconds'}, status=status.HTTP_429_TOO_MANY_REQUESTS)
         if not is_on_school_network(request):
             return Response({'error': 'You must be connected to the school WiFi to time out.'}, status=status.HTTP_403_FORBIDDEN)
-        professor_id = request.data.get('professor_id')
-        if not professor_id:
-            return Response({'error': 'professor_id is required.'}, status=status.HTTP_400_BAD_REQUEST)
-        try:
-            professor = Professor.objects.get(id=professor_id)
-            day = AttendanceDay.objects.filter(professor=professor, date=timezone.localdate()).first()
-            if not day:
-                return Response({'error': 'No time-in record found for today.'}, status=status.HTTP_404_NOT_FOUND)
-            if day.is_timed_out:
-                return Response({'status': 'Already timed out today.', 'data': self.get_serializer(day).data}, status=status.HTTP_200_OK)
-            day.time_out = timezone.now()
-            day.save()
-            prof_name  = professor.user.get_full_name()
-            sms_sent   = send_hr_notification(prof_name, "Timed Out (Left Campus)")
-            email_sent = send_hr_email(prof_name, "Timed Out (Left Campus)", request)
-            return Response({'status': 'Time-out recorded.', 'sms_status': 'HR notified' if sms_sent else 'SMS failed', 'email_status': 'HR emailed' if email_sent else 'Email failed', 'data': self.get_serializer(day).data}, status=status.HTTP_200_OK)
-        except Professor.DoesNotExist:
-            return Response({'error': 'Professor not found.'}, status=status.HTTP_404_NOT_FOUND)
+        requested_professor_id = request.data.get('professor_id')
+        user_professor = getattr(request.user, 'professor', None)
+        if user_professor is not None:
+            if requested_professor_id and str(requested_professor_id) != str(user_professor.id):
+                return Response({'error': 'You can only time out for yourself.'}, status=status.HTTP_403_FORBIDDEN)
+            professor = user_professor
+        else:
+            if not requested_professor_id:
+                return Response({'error': 'professor_id is required.'}, status=status.HTTP_400_BAD_REQUEST)
+            try:
+                professor = Professor.objects.get(id=requested_professor_id)
+            except (Professor.DoesNotExist, ValueError, TypeError):
+                return Response({'error': 'Professor not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        day = AttendanceDay.objects.filter(professor=professor, date=timezone.localdate()).first()
+        if not day:
+            return Response({'error': 'No time-in record found for today.'}, status=status.HTTP_404_NOT_FOUND)
+        if day.is_timed_out:
+            return Response({'status': 'Already timed out today.', 'data': self.get_serializer(day).data}, status=status.HTTP_200_OK)
+        old_values = _attendance_snapshot(day)
+        day.time_out = timezone.now()
+        day.save()
+        log_audit(request, 'TIMEOUT', day, old_values=old_values, new_values=_attendance_snapshot(day))
+        prof_name  = professor.user.get_full_name()
+        sms_sent   = send_hr_notification(prof_name, "Timed Out (Left Campus)")
+        email_sent = send_hr_email(prof_name, "Timed Out (Left Campus)", request)
+        return Response({'status': 'Time-out recorded.', 'sms_status': 'HR notified' if sms_sent else 'SMS failed', 'email_status': 'HR emailed' if email_sent else 'Email failed', 'data': self.get_serializer(day).data}, status=status.HTTP_200_OK)
 
 
 class AttendanceSessionViewSet(viewsets.ModelViewSet):
-    queryset         = AttendanceSession.objects.all()
+    queryset = AttendanceSession.objects.all()
     serializer_class = AttendanceSessionSerializer
-    permission_classes = [IsAuthenticated]
+
+    def get_permissions(self):
+        if self.action == 'log_session':
+            return [IsProfessorOrHR()]
+        return [IsHROrReadOnly()]
+
+    def get_queryset(self):
+        user = self.request.user
+        if not user or not user.is_authenticated:
+            return AttendanceSession.objects.none()
+        if hasattr(user, "professor"):
+            return AttendanceSession.objects.filter(day_record__professor=user.professor)
+        return AttendanceSession.objects.all()
 
     @action(detail=False, methods=['post'])
     def log_session(self, request):
@@ -1121,13 +1353,88 @@ class AttendanceSessionViewSet(viewsets.ModelViewSet):
         if not serializer.is_valid():
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
         day_record = serializer.validated_data['day_record']
+        user_professor = getattr(request.user, 'professor', None)
+        if user_professor is not None and day_record.professor_id != user_professor.id:
+            return Response({'error': 'You can only log sessions for yourself.'}, status=status.HTTP_403_FORBIDDEN)
         if not day_record.time_in:
             return Response({'error': 'Cannot log session without timing in first.'}, status=status.HTTP_403_FORBIDDEN)
         if day_record.is_timed_out:
             return Response({'error': 'Cannot log session after timing out.'}, status=status.HTTP_403_FORBIDDEN)
         session    = serializer.save()
+        log_audit(request, 'CREATE', session, new_values={
+            'day_record': str(session.day_record),
+            'subject_code': session.subject_code,
+            'classroom': session.classroom,
+        })
         prof_name  = session.day_record.professor.user.get_full_name()
         event_message = f"Session Start: {session.subject_code} @ {session.classroom} at {timezone.now().strftime('%H:%M')}"
         sms_sent   = send_hr_notification(prof_name, event_message)
         email_sent = send_hr_email(prof_name, event_message, request)
         return Response({'status': 'Session logged.', 'sms_status': 'HR notified' if sms_sent else 'SMS failed', 'email_status': 'HR emailed' if email_sent else 'Email failed'}, status=status.HTTP_201_CREATED)
+
+# QR Token Helpers
+
+def _get_qr_serializer():
+    return URLSafeTimedSerializer(settings.SECRET_KEY, salt='sbc-ptattendance-qr')
+
+
+def generate_qr_token(professor_id):
+    s = _get_qr_serializer()
+    today = timezone.localdate().isoformat()
+    return s.dumps({'pid': professor_id, 'd': today})
+
+
+def verify_qr_token(token, max_age=60*60*24):
+    if not token:
+        return None, None
+    s = _get_qr_serializer()
+    try:
+        data = s.loads(token, max_age=max_age)
+        return data.get('pid'), data.get('d')
+    except (BadSignature, SignatureExpired, TypeError):
+        return None, None
+
+
+@hr_required
+def edit_attendance_day(request, day_id):
+    day = get_object_or_404(
+        AttendanceDay.objects.select_related('professor__user'),
+        id=day_id,
+    )
+    error = None
+
+    if request.method == 'POST':
+        old_values = _attendance_snapshot(day)
+        time_in_raw = request.POST.get('time_in', '').strip()
+        time_out_raw = request.POST.get('time_out', '').strip()
+        reason = request.POST.get('reason', '').strip()
+
+        new_time_in = _parse_day_time(time_in_raw, day)
+        new_time_out = _parse_day_time(time_out_raw, day) if time_out_raw else None
+
+        if not new_time_in:
+            error = 'A valid time-in is required.'
+        elif new_time_out and new_time_out <= new_time_in:
+            error = 'Time-out must be later than time-in.'
+        elif not reason:
+            error = 'Please provide a reason for this edit.'
+        else:
+            day.time_in = new_time_in
+            day.time_out = new_time_out
+            day.save(update_fields=['time_in', 'time_out'])
+            _recalculate_session_lateness(day)
+
+            new_values = _attendance_snapshot(day)
+            if new_values != old_values:
+                log_audit(
+                    request, 'UPDATE', day,
+                    old_values=old_values, new_values=new_values, reason=reason,
+                )
+                return redirect(f"{reverse('attendance')}?date={day.date.isoformat()}")
+            error = 'No changes were made.'
+
+    context = {
+        'day': day,
+        'error': error,
+    }
+    return render(request, 'record_tracker/edit_attendance_day.html', context)

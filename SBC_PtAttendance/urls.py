@@ -21,6 +21,7 @@ from django.conf import settings
 from django.conf.urls.static import static
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView
 from record_tracker.views import (
+    edit_attendance_day,
     # Helpers
     check_ip,
     # Auth
@@ -31,7 +32,7 @@ from record_tracker.views import (
     hr_dashboard, professors_view, attendance_view,
     add_professor, edit_professor, delete_professor,
     sessions_view, notifications_view,
-    reports_view, qr_codes_view, analytics_view,
+    reports_view, qr_codes_view, analytics_view, audit_logs_view,
     generate_qr, generate_all_qr,
     generate_pdf, generate_pdf_all, generate_pdf_range,
     # Semester & Schedule
@@ -62,6 +63,7 @@ urlpatterns = [
 
     # Attendance & Sessions
     path('attendance/', attendance_view, name='attendance'),
+    path('attendance/<int:day_id>/edit/', edit_attendance_day, name='edit_attendance_day'),
     path('sessions/', sessions_view, name='sessions'),
     path('notifications/', notifications_view, name='notifications'),
 
@@ -90,6 +92,9 @@ urlpatterns = [
 
     # Analytics
     path('analytics/', analytics_view, name='analytics'),
+
+    # Audit trail
+    path('audit-logs/', audit_logs_view, name='audit_logs'),
 
     # Professor Portal
     path('professor/', professor_dashboard, name='professor_dashboard'),

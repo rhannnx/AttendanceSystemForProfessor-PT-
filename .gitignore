@@ -17,5 +17,13 @@ db.sqlite3
 # Static build files
 staticfiles/
 
+# Uploaded media and generated QR images
+media/
+
+# Local logs and deployment secrets
+*.log
+.env.*
+!.env.example
+
 # OS files
 .DS_Store

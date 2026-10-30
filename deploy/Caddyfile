@@ -1,0 +1,23 @@
+http://192.168.137.1 {
+	encode gzip
+
+	handle_path /static/* {
+		root * staticfiles
+		file_server
+	}
+
+	handle_path /media/* {
+		root * media
+		file_server
+	}
+
+	reverse_proxy 127.0.0.1:8000 {
+		header_up Host {host}
+		header_up X-Forwarded-For {remote_host}
+	}
+
+	header {
+		X-Content-Type-Options nosniff
+		X-Frame-Options DENY
+	}
+}

@@ -1,42 +1,65 @@
+import ipaddress
+import logging
+
 import requests
 from django.conf import settings
-from django.utils import timezone
-import logging
 from django.core.mail import send_mail
+from django.utils import timezone
 
 logger = logging.getLogger(__name__)
 
-ALLOWED_IP_RANGES = [
-    '127.0.0.1',
-    '192.168.64.',
-    '192.168.65.',
-    '192.168.66.',
-    '192.168.67.',
-    '192.168.68.',
-    '192.168.69.',
-    '192.168.70.',
-    '192.168.71.',
-    '192.168.72.',
-    '192.168.73.',
-    '192.168.74.',
-    '192.168.75.',
-    '192.168.76.',
-    '192.168.77.',
-    '192.168.78.',
-    '192.168.79.',
-    '192.168.137.',
-    '192.168.1.',
-    '192.168.1.28'
-]
+
+def get_client_ip(request):
+    if getattr(settings, 'TRUST_X_FORWARDED_FOR', False):
+        x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
+        if x_forwarded_for:
+            return x_forwarded_for.split(',')[0].strip()
+    return request.META.get('REMOTE_ADDR', '').strip()
+
+
+def _ip_matches_allowed_range(ip, allowed_ranges):
+    try:
+        address = ipaddress.ip_address(ip)
+    except ValueError:
+        return False
+
+    for entry in allowed_ranges:
+        entry = str(entry).strip()
+        if not entry:
+            continue
+
+        if '/' in entry:
+            try:
+                if address in ipaddress.ip_network(entry, strict=False):
+                    return True
+            except ValueError:
+                logger.warning("Invalid ALLOWED_IP_RANGES CIDR entry: %s", entry)
+            continue
+
+        if entry.endswith('.'):
+            if ip.startswith(entry):
+                return True
+            continue
+
+        try:
+            if address == ipaddress.ip_address(entry):
+                return True
+        except ValueError:
+            logger.warning("Invalid ALLOWED_IP_RANGES entry: %s", entry)
+
+    return False
+
 
 def is_on_school_network(request):
-    x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
-    if x_forwarded_for:
-        ip = x_forwarded_for.split(',')[0].strip()
-    else:
-        ip = request.META.get('REMOTE_ADDR', '')
-    logger.info(f"Request IP: {ip}")
-    return any(ip.startswith(allowed) for allowed in ALLOWED_IP_RANGES)
+    if getattr(settings, 'WIFI_BYPASS', False):
+        logger.warning("WIFI_BYPASS is enabled; allowing attendance from all IP addresses.")
+        return True
+
+    ip = get_client_ip(request)
+    allowed_ranges = getattr(settings, 'ALLOWED_IP_RANGES', [])
+    allowed = _ip_matches_allowed_range(ip, allowed_ranges)
+    logger.info("Request IP: %s | school network: %s", ip, allowed)
+    return allowed
 
 
 def send_hr_notification(prof_name, event_message):
@@ -111,14 +134,8 @@ def send_hr_email(prof_name, event_message, request=None):
     date_only = local_now.strftime('%B %d, %Y')
     time_only = local_now.strftime('%I:%M %p')
 
-    # Capture IP
-    ip_address = 'N/A'
-    if request:
-        x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
-        if x_forwarded_for:
-            ip_address = x_forwarded_for.split(',')[0].strip()
-        else:
-            ip_address = request.META.get('REMOTE_ADDR', 'N/A')
+    # Capture IP using the same trust rules as attendance checks.
+    ip_address = (get_client_ip(request) or 'N/A') if request else 'N/A'
 
     subject = f"📌 SBC Attendance Alert — {prof_name}"
     body = (

@@ -194,6 +194,9 @@
     <a href="{% url 'notifications' %}" class="nav-item {% if request.resolver_match.url_name == 'notifications' %}active{% endif %}">
       <i class="ti ti-bell"></i> Notifications
     </a>
+    <a href="{% url 'audit_logs' %}" class="nav-item {% if request.resolver_match.url_name == 'audit_logs' %}active{% endif %}">
+      <i class="ti ti-history"></i> Audit Trail
+    </a>
   </div>
 
   <!-- ✅ Fixed footer with always-visible sign out -->

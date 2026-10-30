@@ -229,3 +229,34 @@ class AttendanceSession(models.Model):
             'ongoing':  'Ongoing',
             'finished': 'Finished',
         }.get(status, 'Unknown')
+
+
+class AuditLog(models.Model):
+    ACTION_CHOICES = [
+        ('CREATE', 'Create'),
+        ('UPDATE', 'Update'),
+        ('DELETE', 'Delete'),
+        ('TIMEIN', 'Time In'),
+        ('TIMEOUT', 'Time Out'),
+        ('QR_GENERATE', 'QR Generate'),
+        ('LOGIN', 'Login'),
+        ('OTHER', 'Other'),
+    ]
+    user = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True)
+    action = models.CharField(max_length=20, choices=ACTION_CHOICES)
+    model_name = models.CharField(max_length=100)
+    object_id = models.CharField(max_length=100, blank=True)
+    object_repr = models.CharField(max_length=255, blank=True)
+    old_values = models.JSONField(null=True, blank=True)
+    new_values = models.JSONField(null=True, blank=True)
+    reason = models.TextField(blank=True)
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    timestamp = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-timestamp']
+        verbose_name = 'Audit Log'
+        verbose_name_plural = 'Audit Logs'
+
+    def __str__(self):
+        return f'{self.timestamp} - {self.action} - {self.model_name}'

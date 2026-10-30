@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import Professor, AttendanceDay, AttendanceSession
+from .models import Professor, AttendanceDay, AttendanceSession, AuditLog
 
 
 @admin.register(Professor)
@@ -103,3 +103,22 @@ class AttendanceSessionAdmin(admin.ModelAdmin):
             minutes = (total_seconds % 3600) // 60
             return f"{hours}h {minutes}m"
         return "Ongoing" if obj.is_ongoing else "—"
+
+
+@admin.register(AuditLog)
+class AuditLogAdmin(admin.ModelAdmin):
+    list_display = ('timestamp', 'action', 'model_name', 'object_repr', 'user', 'ip_address')
+    list_filter = ('action', 'model_name', 'timestamp')
+    search_fields = ('model_name', 'object_id', 'object_repr', 'reason', 'user__username')
+    readonly_fields = (
+        'user', 'action', 'model_name', 'object_id', 'object_repr',
+        'old_values', 'new_values', 'reason', 'ip_address', 'timestamp',
+    )
+    date_hierarchy = 'timestamp'
+    ordering = ('-timestamp',)
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False

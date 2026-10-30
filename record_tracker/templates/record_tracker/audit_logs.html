@@ -1,0 +1,137 @@
+{% extends 'record_tracker/base.html' %}
+{% load static %}
+
+{% block title %}Audit Trail{% endblock %}
+{% block header_title %}Audit Trail{% endblock %}
+{% block header_subtitle %}Track changes and corrections across the attendance system{% endblock %}
+
+{% block extra_css %}
+.filter-form { display:flex; flex-wrap:wrap; gap:10px; align-items:flex-end; padding:16px 20px; border-bottom:1px solid var(--blue-50); }
+.filter-form .form-group { margin:0; }
+.filter-form .form-label { margin-bottom:5px; }
+.filter-form .form-input, .filter-form .form-select { width:auto; min-width:140px; }
+.filter-form .search-input { min-width:220px; }
+.audit-table { width:100%; border-collapse:collapse; }
+.audit-table th { font-size:11px; font-weight:600; color:var(--gray-400); text-transform:uppercase; letter-spacing:.5px; padding:12px 16px; text-align:left; border-bottom:1px solid var(--blue-50); white-space:nowrap; }
+.audit-table td { padding:13px 16px; border-bottom:1px solid var(--blue-50); font-size:12.5px; vertical-align:top; }
+.audit-table tr:last-child td { border-bottom:none; }
+.audit-table tr:hover td { background:var(--blue-50); }
+.audit-action { display:inline-flex; align-items:center; padding:4px 9px; border-radius:20px; font-size:10px; font-weight:600; letter-spacing:.3px; white-space:nowrap; }
+.audit-action.create { background:var(--teal-50); color:var(--teal-600); }
+.audit-action.update { background:var(--blue-50); color:var(--blue-600); }
+.audit-action.delete { background:var(--red-50); color:var(--red-600); }
+.audit-action.timein { background:var(--teal-50); color:var(--teal-600); }
+.audit-action.timeout { background:var(--blue-50); color:var(--blue-600); }
+.audit-action.qr_generate { background:var(--amber-50); color:var(--amber-600); }
+.audit-action.login, .audit-action.other { background:#f1f0eb; color:var(--gray-600); }
+.audit-time { font-family:'DM Mono',monospace; font-size:11px; color:var(--gray-600); white-space:nowrap; }
+.audit-object { font-weight:500; color:var(--blue-900); }
+.audit-model { font-family:'DM Mono',monospace; font-size:10.5px; color:var(--gray-400); margin-top:2px; }
+.audit-reason { color:var(--gray-600); max-width:260px; }
+.audit-ip { font-family:'DM Mono',monospace; font-size:10.5px; color:var(--gray-400); }
+.audit-values { margin-top:6px; }
+.audit-values summary { font-size:10.5px; color:var(--blue-600); cursor:pointer; }
+.audit-values pre { background:var(--blue-50); border-radius:6px; padding:8px; margin-top:6px; font-size:10px; color:var(--gray-600); overflow-x:auto; white-space:pre-wrap; word-break:break-word; }
+.pagination { display:flex; align-items:center; justify-content:space-between; padding:14px 20px; border-top:1px solid var(--blue-50); font-size:12px; color:var(--gray-400); }
+.pagination-links { display:flex; gap:6px; }
+.page-link { padding:5px 10px; border-radius:6px; border:1px solid var(--blue-100); color:var(--blue-600); text-decoration:none; background:white; }
+.page-link:hover { background:var(--blue-50); }
+.page-current { padding:5px 10px; color:var(--gray-400); }
+{% endblock %}
+
+{% block content %}
+<div class="card">
+  <form method="GET" class="filter-form">
+    <div class="form-group">
+      <label class="form-label">Search</label>
+      <input type="text" name="q" value="{{ query }}" class="form-input search-input" placeholder="User, record, reason..." />
+    </div>
+    <div class="form-group">
+      <label class="form-label">Action</label>
+      <select name="action" class="form-select">
+        <option value="">All actions</option>
+        {% for value, label in actions %}
+        <option value="{{ value }}" {% if selected_action == value %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="form-group">
+      <label class="form-label">From</label>
+      <input type="date" name="date_from" value="{{ date_from }}" class="form-input" />
+    </div>
+    <div class="form-group">
+      <label class="form-label">To</label>
+      <input type="date" name="date_to" value="{{ date_to }}" class="form-input" />
+    </div>
+    <button type="submit" class="btn btn-primary"><i class="ti ti-filter"></i> Filter</button>
+    <a href="{% url 'audit_logs' %}" class="btn btn-outline">Reset</a>
+  </form>
+
+  <table class="audit-table">
+    <thead>
+      <tr>
+        <th>Timestamp</th>
+        <th>Action</th>
+        <th>Record</th>
+        <th>User</th>
+        <th>Reason</th>
+        <th>IP Address</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for log in logs %}
+      <tr>
+        <td><span class="audit-time">{{ log.timestamp|date:"M d, Y" }}<br>{{ log.timestamp|time:"h:i A" }}</span></td>
+        <td>
+          <span class="audit-action {{ log.action|lower }}">{{ log.get_action_display }}</span>
+        </td>
+        <td>
+          <div class="audit-object">{{ log.object_repr|default:"—" }}</div>
+          <div class="audit-model">{{ log.model_name }}{% if log.object_id %} #{{ log.object_id }}{% endif %}</div>
+          {% if log.old_values or log.new_values %}
+          <details class="audit-values">
+            <summary>View values</summary>
+            {% if log.old_values %}<pre>Old: {{ log.old_values }}</pre>{% endif %}
+            {% if log.new_values %}<pre>New: {{ log.new_values }}</pre>{% endif %}
+          </details>
+          {% endif %}
+        </td>
+        <td>
+          {% if log.user %}
+            {{ log.user.get_full_name|default:log.user.username }}
+          {% else %}
+            <span style="color:var(--gray-400);">System</span>
+          {% endif %}
+        </td>
+        <td><div class="audit-reason">{{ log.reason|default:"—" }}</div></td>
+        <td><span class="audit-ip">{{ log.ip_address|default:"—" }}</span></td>
+      </tr>
+      {% empty %}
+      <tr>
+        <td colspan="6">
+          <div class="empty-state">
+            <i class="ti ti-history-off"></i>
+            No audit log entries match your filters.
+          </div>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  {% if page_obj.paginator.num_pages > 1 %}
+  <div class="pagination">
+    <span>{{ total_logs }} entr{{ total_logs|pluralize:"y,ies" }} · Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span>
+    <div class="pagination-links">
+      {% if page_obj.has_previous %}
+      <a class="page-link" href="?page={{ page_obj.previous_page_number }}{% if selected_action %}&action={{ selected_action }}{% endif %}{% if query %}&q={{ query|urlencode }}{% endif %}{% if date_from %}&date_from={{ date_from }}{% endif %}{% if date_to %}&date_to={{ date_to }}{% endif %}">Previous</a>
+      {% endif %}
+      <span class="page-current">{{ page_obj.number }}</span>
+      {% if page_obj.has_next %}
+      <a class="page-link" href="?page={{ page_obj.next_page_number }}{% if selected_action %}&action={{ selected_action }}{% endif %}{% if query %}&q={{ query|urlencode }}{% endif %}{% if date_from %}&date_from={{ date_from }}{% endif %}{% if date_to %}&date_to={{ date_to }}{% endif %}">Next</a>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

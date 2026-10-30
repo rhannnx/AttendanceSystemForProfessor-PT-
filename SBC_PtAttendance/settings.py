@@ -16,8 +16,33 @@ ALLOWED_HOSTS = env.list('ALLOWED_HOSTS', default=[
     'localhost',
     '192.168.1.12',
     '192.168.137.1',
-    '192.168.1.28'  # ← add quotes ✅
+    '192.168.1.28',
 ])
+
+# WiFi / network access control
+ALLOWED_IP_RANGES = env.list('ALLOWED_IP_RANGES', default=[
+    '127.0.0.1',
+    '192.168.1.',
+    '192.168.137.',
+    '192.168.64.',
+    '192.168.65.',
+    '192.168.66.',
+    '192.168.67.',
+    '192.168.68.',
+    '192.168.69.',
+    '192.168.70.',
+    '192.168.71.',
+    '192.168.72.',
+    '192.168.73.',
+    '192.168.74.',
+    '192.168.75.',
+    '192.168.76.',
+    '192.168.77.',
+    '192.168.78.',
+    '192.168.79.',
+])
+WIFI_BYPASS = env.bool('WIFI_BYPASS', default=False)
+TRUST_X_FORWARDED_FOR = env.bool('TRUST_X_FORWARDED_FOR', default=False)
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -86,10 +111,26 @@ USE_I18N = True
 USE_TZ = True
 
 STATIC_URL = 'static/'
+STATIC_ROOT = BASE_DIR / 'staticfiles'
 
 # ✅ QR code images and other uploads are stored here
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
+
+# ── Deployment / proxy settings ───────────────────────────────────────────────
+CSRF_TRUSTED_ORIGINS = env.list(
+    'CSRF_TRUSTED_ORIGINS',
+    default=['http://192.168.137.1'],
+)
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+SECURE_SSL_REDIRECT = env.bool('SECURE_SSL_REDIRECT', default=False)
+SESSION_COOKIE_SECURE = env.bool('SESSION_COOKIE_SECURE', default=False)
+CSRF_COOKIE_SECURE = env.bool('CSRF_COOKIE_SECURE', default=False)
+SECURE_HSTS_SECONDS = env.int('SECURE_HSTS_SECONDS', default=0)
+SECURE_HSTS_INCLUDE_SUBDOMAINS = env.bool('SECURE_HSTS_INCLUDE_SUBDOMAINS', default=False)
+SECURE_HSTS_PRELOAD = env.bool('SECURE_HSTS_PRELOAD', default=False)
+SECURE_CONTENT_TYPE_NOSNIFF = True
+X_FRAME_OPTIONS = 'DENY'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
